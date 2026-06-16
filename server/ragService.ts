@@ -162,6 +162,48 @@ export function isConversationalOnly(message: string): boolean {
   return false;
 }
 
+export function parseFilesFromMarkdown(content: string): Record<string, string> {
+  const files: Record<string, string> = {};
+  if (!content) return files;
+
+  // Split content by header matches like "### FILE: filename" at the start of any line
+  const parts = content.split(/(?:\r?\n|^)### FILE:\s*/i);
+  // The first part is text before the first FILE block.
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+    const firstNewlineIndex = part.indexOf("\n");
+    if (firstNewlineIndex === -1) continue;
+
+    // The first line is the filename
+    let filename = part.substring(0, firstNewlineIndex).trim();
+    // Clean any decoration like markdown bold "**client.lua**" or backticks "`config.lua`"
+    filename = filename.replace(/[\*`#:]/g, "").trim();
+    if (!filename) continue;
+
+    const rest = part.substring(firstNewlineIndex).trim();
+    
+    // We expect the code to reside in a markdown block, starting with ```language
+    const codeStartMatch = rest.match(/^```[a-zA-Z0-9_-]*\r?\n/);
+    if (codeStartMatch) {
+      const codeStartOffset = codeStartMatch[0].length;
+      const closingFenceIndex = rest.indexOf("```", codeStartOffset);
+      if (closingFenceIndex !== -1) {
+        const fileContent = rest.substring(codeStartOffset, closingFenceIndex).trim();
+        files[filename] = fileContent;
+      } else {
+        // If truncated / not closed, take until the end
+        const fileContent = rest.substring(codeStartOffset).trim();
+        files[filename] = fileContent;
+      }
+    } else {
+      // If no code fence is used, take the rest as raw file content
+      files[filename] = rest;
+    }
+  }
+
+  return files;
+}
+
 export function safeParseGeminiJson(text: string): any {
   if (!text) {
     throw new Error("O modelo gerou uma resposta vazia.");
@@ -213,6 +255,29 @@ ATENÇÃO RIGOROSA PARA TAMANHO E DOCUMENTAÇÃO (EVITE RESPOSTAS TRUNCADAS):
 - O README.md deve ser direto, sem repetir a documentação da base RAG inteira. Seja objetivo com passos de instalação breves.
 - Foque somente no necessário para o recurso funcionar sem erros de sintaxe ou referências inválidas.
 
+ESTRATÉGIA SOBRE GERAÇÃO DE ARQUIVOS (IMPORTANTE):
+- Nunca use o objeto JSON para colocar os arquivos de código. O objeto JSON de retorno NUNCA deve conter a chave "files" no "scriptDetail".
+- Em vez disso, coloque e desenvolva TODO o código do script e todos os arquivos diretamente em formato markdown dentro do campo "content".
+- Escreva cada arquivo usando de forma estrita o seguinte cabeçalho antes do código:
+### FILE: nome_do_arquivo.extensao
+\`\`\`lua
+(conteúdo completo do arquivo)
+\`\`\`
+
+Exemplo no campo "content":
+### FILE: fxmanifest.lua
+\`\`\`lua
+fx_version 'cerulean'
+game 'rdr3'
+\`\`\`
+
+### FILE: config.lua
+\`\`\`lua
+Config = {}
+\`\`\`
+
+Certifique-se de que cada bloco de código seja completo e compilável sem cortes, placeholders como "... resto do código". Use arquivos inline com o cabeçalho "### FILE: ".
+
 CONSIDERE ESTAS DIRETRIZES DE DESIGN:
 - Mantenha padrão estrito do RSG Framework. Nunca misture VORP, QBCore, ESX ou VRP.
 - Valide todas as ações críticas de forma estricta no server.lua para proteção contra exploits.
@@ -221,7 +286,8 @@ CONSIDERE ESTAS DIRETRIZES DE DESIGN:
 - Use eventos com um prefixo único baseado no nome do resource para evitar colisões.
 
 MODO 1 (Novo Script):
-Se não houver script ou arquivos anteriores fornecidos no contexto, crie um novo resource RedM completo do zero:
+Se não houver script ou arquivos anteriores fornecidos no contexto, crie um novo resource RedM completo do zero.
+Escreva os seguintes arquivos no formato ### FILE: no campo "content":
 - fxmanifest.lua
 - config.lua
 - client.lua
@@ -232,7 +298,7 @@ MODO 2 (Alteração incremental):
 Se já houver um script existente (com arquivos anteriores) fornecido no contexto de entrada:
 - Analise os arquivos atuais e aplique somente as mudanças solicitadas pelo usuário.
 - Preserve todas as funcionalidades existentes. Nunca remova ou limpe códigos anteriores a menos que explicitamente solicitado.
-- Retorne TODOS os arquivos atualizados em seu estado completo final no objeto "files". Não retorne cortes ou placeholders como '-- resto do código'. O código deve ser completo e compilável!
+- Retorne TODOS os arquivos atualizados em seu estado completo final em blocos ### FILE: no campo "content". Não use placeholders.
 - No campo "change_summary", forneça um resumo técnico detalhado em português das melhorias aplicadas nesta versão.
 - No campo "changed_files", liste os nomes dos arquivos que de fato sofreram alterações.
 
@@ -253,11 +319,11 @@ Você deve responder rigorosamente no formato JSON especificado.`;
           properties: {
             content: { 
               type: Type.STRING, 
-              description: "O texto explicativo de resposta estruturada para o usuário, explicando onde colocar o script, o que foi feito de alterações e as boas práticas adotadas em português." 
+              description: "O texto explicativo de resposta estruturada para o usuário em português. TODOS os arquivos de código correspondentes (como fxmanifest.lua, config.lua, client.lua, server.lua e README.md) DEVEM ser obrigatoriamente incluídos por inteiro dentro desse campo 'content' em formato markdown, cada um demarcado com o cabeçalho '### FILE: nome_do_arquivo' antes de seu bloco de código correspondente com três crases. Nunca coloque placeholders." 
             },
             hasScript: { 
               type: Type.BOOLEAN, 
-              description: "Deve ser true se você gerou um script de RedM funcional com arquivos de código." 
+              description: "Deve ser true se você gerou ou modificou um script de RedM funcional com arquivos de código." 
             },
             scriptDetail: {
               type: Type.OBJECT,
@@ -269,18 +335,6 @@ Você deve responder rigorosamente no formato JSON especificado.`;
                   type: Type.ARRAY,
                   items: { type: Type.STRING },
                   description: "Lista de arquivos criados/modificados nesta versão (ex: ['client.lua', 'config.lua'])"
-                },
-                files: {
-                  type: Type.OBJECT,
-                  properties: {
-                    "fxmanifest.lua": { type: Type.STRING, description: "Manifesto completo do recurso RedM" },
-                    "config.lua": { type: Type.STRING, description: "Arquivo de configurações de coordenadas, itens e timers" },
-                    "client.lua": { type: Type.STRING, description: "Código do cliente, prompts nativos do RedM, distâncias otimizadas" },
-                    "server.lua": { type: Type.STRING, description: "Código do servidor, validação segura de dinheiro, itens e callbacks" },
-                    "shared.lua": { type: Type.STRING, description: "Opcional. Código compartilhado ou tabelas compartilhadas" },
-                    "README.md": { type: Type.STRING, description: "Passo a passo detalhado de instalação, tabelas SQL de banco de dados se houver, e itens para o shared/items.lua" }
-                  },
-                  description: "Escreva o código completo de cada arquivo aplicável. Insira apenas arquivos úteis para o recurso solicitado."
                 },
                 dependencies: {
                   type: Type.ARRAY,
@@ -298,8 +352,8 @@ Você deve responder rigorosamente no formato JSON especificado.`;
                   description: "Avisos importantes de segurança, performance ou bugs comuns"
                 }
               },
-              required: ["title", "description", "files", "change_summary", "changed_files"],
-              description: "Detalhes dos arquivos gerados, preenchido apenas se hasScript for true."
+              required: ["title", "description", "change_summary", "changed_files"],
+              description: "Detalhes dos arquivos gerados, preenchido apenas se hasScript for true. NÃO inclua nenhum campo 'files' dentro de scriptDetail no JSON."
             }
           },
           required: ["content", "hasScript"]
@@ -328,6 +382,12 @@ Você deve responder rigorosamente no formato JSON especificado.`;
     let activeScriptId = currentScript ? currentScript.id : null;
     let versionNum = 1;
     let versionId: string | undefined;
+
+    if (parsed.hasScript && parsed.scriptDetail) {
+      // Extract files dynamically from the markdown content field!
+      const parsedFiles = parseFilesFromMarkdown(parsed.content);
+      parsed.scriptDetail.files = parsedFiles;
+    }
 
     if (parsed.hasScript && parsed.scriptDetail) {
       if (!currentScript) {
