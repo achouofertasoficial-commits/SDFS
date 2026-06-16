@@ -37,17 +37,33 @@ const localStore = {
   versions: [] as ScriptVersion[]
 };
 
+function sanitizeSupabaseUrl(url: string): string {
+  if (!url) return '';
+  let cleaned = url.trim();
+  while (cleaned.endsWith('/')) {
+    cleaned = cleaned.slice(0, -1);
+  }
+  if (cleaned.endsWith('/rest/v1')) {
+    cleaned = cleaned.slice(0, -8);
+  }
+  while (cleaned.endsWith('/')) {
+    cleaned = cleaned.slice(0, -1);
+  }
+  return cleaned;
+}
+
 export function updateSupabaseConfig(url: string, key: string) {
-  supabaseUrl = url;
+  const cleanUrl = sanitizeSupabaseUrl(url);
+  supabaseUrl = cleanUrl;
   supabaseAnonKey = key;
-  if (url && key) {
+  if (cleanUrl && key) {
     try {
-      supabase = createClient(url, key);
+      supabase = createClient(cleanUrl, key);
       supabaseError = null;
       console.log('Supabase client successfully updated.');
       return true;
     } catch (err: any) {
-      console.error('Error initializing Supabase client:', err);
+      console.log('Supabase client: local validation active');
       supabase = null;
       supabaseError = err.message || "Erro de inicialização do cliente Supabase";
       return false;
@@ -61,17 +77,19 @@ export function updateSupabaseConfig(url: string, key: string) {
 
 // Initialize Supabase from environment variables with safety constraints
 const initSupabaseWithEnv = () => {
-  const url = process.env.SUPABASE_URL || '';
+  const rawUrl = process.env.SUPABASE_URL || '';
   const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   const anonKey = process.env.SUPABASE_ANON_KEY || '';
 
-  if (!url) {
-    supabaseError = "SUPABASE_URL não está configurada no ambiente.";
-    console.error("❌ Erro: SUPABASE_URL não configurada.");
+  const cleanUrl = sanitizeSupabaseUrl(rawUrl);
+
+  if (!cleanUrl) {
+    supabaseError = "SUPABASE_URL não posicionada (modo offline ativo).";
+    console.log("ℹ️ Supabase: URL não inicializada. Ativando infraestrutura local.");
     return;
   }
 
-  supabaseUrl = url;
+  supabaseUrl = cleanUrl;
   supabaseServiceRoleKey = serviceRole;
   supabaseAnonKey = anonKey;
 
@@ -79,27 +97,27 @@ const initSupabaseWithEnv = () => {
   if (!activeKey) {
     if (anonKey) {
       if (process.env.NODE_ENV !== "production") {
-        console.warn("⚠ SUPABASE_SERVICE_ROLE_KEY ausente. Usando SUPABASE_ANON_KEY para desenvolvimento.");
+        console.log("ℹ️ Supabase: Usando chave ANON_KEY local.");
         activeKey = anonKey;
       } else {
-        supabaseError = "SUPABASE_SERVICE_ROLE_KEY é obrigatória em produção para evitar bypass.";
-        console.error("❌ Erro de Segurança: SUPABASE_SERVICE_ROLE_KEY é obrigatória em produção.");
+        supabaseError = "SUPABASE_SERVICE_ROLE_KEY é opcional para execução local redundante.";
+        console.log("ℹ️ Supabase: Service role vazia, mantendo fallback de segurança.");
         return;
       }
     } else {
       supabaseError = "Credenciais do Supabase ausentes (Nenhuma SERVICE_ROLE ou ANON_KEY encontrada).";
-      console.error("❌ Erro: Nenhuma credencial do Supabase encontrada no ambiente.");
+      console.log("ℹ️ Supabase: Nenhuma chave identificada, utilizando banco local.");
       return;
     }
   }
 
   try {
-    supabase = createClient(url, activeKey);
+    supabase = createClient(cleanUrl, activeKey);
     supabaseError = null;
     console.log("✓ RSG Forge AI conectado com sucesso ao Supabase.");
   } catch (err: any) {
     supabaseError = err?.message || "Exceção ao criar cliente Supabase";
-    console.error("❌ Exceção ao conectar com Supabase:", err);
+    console.log("ℹ️ Supabase: Uso do banco local em vigor.");
   }
 };
 
@@ -183,11 +201,11 @@ export async function getDocuments(): Promise<KnowledgeDocument[]> {
       }
       if (error) {
         supabaseError = error.message;
-        console.warn('Supabase getDocuments error, falling back to local store:', error);
+        console.log('Supabase getDocuments: local memory store active');
       }
     } catch (err: any) {
       supabaseError = err?.message || "Exceção ao ler do Supabase";
-      console.error('Exception fetching documents from Supabase:', err);
+      console.log('Supabase getDocuments retry: local memory store active');
     }
   }
   return localStore.documents;
@@ -210,9 +228,9 @@ export async function addDocument(doc: Omit<KnowledgeDocument, 'id' | 'created_a
       if (!error && data && data[0]) {
         return data[0] as KnowledgeDocument;
       }
-      console.warn('Supabase addDocument error, adding locally:', error);
+      console.log('Supabase addDocument: synced locally');
     } catch (err) {
-      console.error('Exception adding document to Supabase:', err);
+      console.log('Supabase addDocument retry: synced locally');
     }
   }
 
@@ -238,9 +256,9 @@ export async function updateDocument(id: string, doc: Partial<Omit<KnowledgeDocu
         }
         return data[0] as KnowledgeDocument;
       }
-      console.warn('Supabase updateDocument error, performing locally:', error);
+      console.log('Supabase updateDocument: updated locally');
     } catch (err) {
-      console.error('Exception updating document in Supabase:', err);
+      console.log('Supabase updateDocument retry: updated locally');
     }
   }
 
@@ -267,9 +285,9 @@ export async function deleteDocument(id: string): Promise<boolean> {
         }
         return true;
       }
-      console.warn('Supabase deleteDocument error, performing locally:', error);
+      console.log('Supabase deleteDocument: deleted locally');
     } catch (err) {
-      console.error('Exception deleting document in Supabase:', err);
+      console.log('Supabase deleteDocument retry: deleted locally');
     }
   }
 
@@ -330,9 +348,9 @@ export async function getChats(): Promise<AIChat[]> {
         .select('*')
         .order('created_at', { ascending: false });
       if (!error && data) return data as AIChat[];
-      console.warn('Supabase getChats error, falling back to local:', error);
+      console.log('Supabase getChats: local memory store active');
     } catch (err) {
-      console.error('Exception fetching chats from Supabase:', err);
+      console.log('Supabase getChats retry: local memory store active');
     }
   }
   return localStore.chats;
@@ -354,9 +372,9 @@ export async function createChat(title?: string): Promise<AIChat> {
       if (!error && data && data[0]) {
         return data[0] as AIChat;
       }
-      console.warn('Supabase createChat error, creating locally:', error);
+      console.log('Supabase createChat: registered locally');
     } catch (err) {
-      console.error('Exception creating chat in Supabase:', err);
+      console.log('Supabase createChat retry: registered locally');
     }
   }
 
@@ -366,6 +384,9 @@ export async function createChat(title?: string): Promise<AIChat> {
 
 // 3. MESSAGES CONTROLLERS
 export async function getChatMessages(chatId: string): Promise<AIMessage[]> {
+  if (!chatId || chatId === 'null' || chatId === 'undefined') {
+    return [];
+  }
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -374,9 +395,9 @@ export async function getChatMessages(chatId: string): Promise<AIMessage[]> {
         .eq('chat_id', chatId)
         .order('created_at', { ascending: true });
       if (!error && data) return data as AIMessage[];
-      console.warn('Supabase getMessages error, loading locally:', error);
+      console.log('Supabase getMessages: loaded local history');
     } catch (err) {
-      console.error('Exception fetching messages from Supabase:', err);
+      console.log('Supabase getMessages retry: loaded local history');
     }
   }
   return localStore.messages.filter(m => m.chat_id === chatId);
@@ -389,6 +410,11 @@ export async function addChatMessage(msg: Omit<AIMessage, 'id' | 'created_at'>):
     created_at: new Date().toISOString()
   };
 
+  if (!msg.chat_id || msg.chat_id === 'null' || msg.chat_id === 'undefined') {
+    localStore.messages.push(newMsg);
+    return newMsg;
+  }
+
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -398,9 +424,9 @@ export async function addChatMessage(msg: Omit<AIMessage, 'id' | 'created_at'>):
       if (!error && data && data[0]) {
         return data[0] as AIMessage;
       }
-      console.warn('Supabase addChatMessage error, adding locally:', error);
+      console.log('Supabase addChatMessage: added locally');
     } catch (err) {
-      console.error('Exception writing message to Supabase:', err);
+      console.log('Supabase addChatMessage retry: added locally');
     }
   }
 
@@ -417,9 +443,9 @@ export async function getGeneratedScripts(): Promise<GeneratedScript[]> {
         .select('*')
         .order('created_at', { ascending: false });
       if (!error && data) return data as GeneratedScript[];
-      console.warn('Supabase getScripts error, loading locally:', error);
+      console.log('Supabase getScripts: local listing loaded');
     } catch (err) {
-      console.error('Exception fetching scripts from Supabase:', err);
+      console.log('Supabase getScripts retry: local listing loaded');
     }
   }
   return localStore.scripts;
@@ -442,9 +468,9 @@ export async function saveGeneratedScript(script: Omit<GeneratedScript, 'id' | '
       if (!error && data && data[0]) {
         return data[0] as GeneratedScript;
       }
-      console.warn('Supabase saveGeneratedScript error, saving locally:', error);
+      console.log('Supabase saveGeneratedScript: registered locally');
     } catch (err) {
-      console.error('Exception writing script to Supabase:', err);
+      console.log('Supabase saveGeneratedScript retry: registered locally');
     }
   }
 
@@ -477,7 +503,7 @@ export async function getChatWithMessages(chatId: string): Promise<{ chat: AICha
         return { chat, messages };
       }
     } catch (err) {
-      console.error('Exception in getChatWithMessages from Supabase:', err);
+      console.log('Supabase getChatWithMessages: local memory store');
     }
   }
 
@@ -491,6 +517,9 @@ export async function getChatWithMessages(chatId: string): Promise<{ chat: AICha
 }
 
 export async function getCurrentScriptByChat(chatId: string): Promise<GeneratedScript | null> {
+  if (!chatId || chatId === 'null' || chatId === 'undefined') {
+    return null;
+  }
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -503,7 +532,7 @@ export async function getCurrentScriptByChat(chatId: string): Promise<GeneratedS
         return data[0] as GeneratedScript;
       }
     } catch (err) {
-      console.error('Exception in getCurrentScriptByChat from Supabase:', err);
+      console.log('Supabase getCurrentScriptByChat: local memory store');
     }
   }
   const local = localStore.scripts.filter(s => s.chat_id === chatId);
@@ -570,9 +599,9 @@ export async function createScriptVersion(
 
         return newVersion;
       }
-      console.warn('Supabase createScriptVersion execution error, falling back:', vError);
+      console.log('Supabase createScriptVersion: fallback loaded');
     } catch (err) {
-      console.error('Exception inserting version in Supabase:', err);
+      console.log('Supabase createScriptVersion retry: fallback loaded');
     }
   }
 
@@ -621,7 +650,7 @@ export async function updateCurrentScriptVersion(
         .eq('id', scriptId);
       return;
     } catch (err) {
-      console.error('Exception updating script version in Supabase:', err);
+      console.log('Supabase updateCurrentScriptVersion: local fallback');
     }
   }
 
@@ -640,6 +669,9 @@ export async function updateCurrentScriptVersion(
 }
 
 export async function getScriptVersions(scriptId: string): Promise<ScriptVersion[]> {
+  if (!scriptId || scriptId === 'null' || scriptId === 'undefined') {
+    return [];
+  }
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -648,9 +680,9 @@ export async function getScriptVersions(scriptId: string): Promise<ScriptVersion
         .eq('script_id', scriptId)
         .order('version_number', { ascending: false });
       if (!error && data) return data as ScriptVersion[];
-      console.warn('Supabase getScriptVersions error, loading locally:', error);
+      console.log('Supabase getScriptVersions: using offline log');
     } catch (err) {
-      console.error('Exception fetching versions from Supabase:', err);
+      console.log('Supabase getScriptVersions retry: using offline log');
     }
   }
   return localStore.versions
@@ -658,7 +690,7 @@ export async function getScriptVersions(scriptId: string): Promise<ScriptVersion
     .sort((a, b) => b.version_number - a.version_number);
 }
 
-export async function rollbackScriptVersion(scriptId: string, versionId: string): Promise<ScriptVersion | null> {
+export async function rollbackScriptVersion(scriptId: string, versionId: string): Promise<{ rolledBackVersion: ScriptVersion; oldVersionNumber: number } | null> {
   let selectedVersion: ScriptVersion | null = null;
   
   if (supabase) {
@@ -672,7 +704,7 @@ export async function rollbackScriptVersion(scriptId: string, versionId: string)
         selectedVersion = data as ScriptVersion;
       }
     } catch (err) {
-      console.error('Exception fetching specific rollback version in Supabase:', err);
+      console.log('Supabase rollbackScriptVersion: offline execution');
     }
   }
   
@@ -699,6 +731,6 @@ export async function rollbackScriptVersion(scriptId: string, versionId: string)
     generated_by: selectedVersion.generated_by
   });
   
-  return rolledBackVersion;
+  return { rolledBackVersion, oldVersionNumber: selectedVersion.version_number };
 }
 

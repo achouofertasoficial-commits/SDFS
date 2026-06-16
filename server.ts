@@ -382,6 +382,17 @@ async function startServer() {
   });
 
   // Retorna todas as versões de um script específico
+  app.get("/api/chats/:chatId/current-script", async (req, res) => {
+    try {
+      const { chatId } = req.params;
+      const currentScript = await getCurrentScriptByChat(chatId);
+      res.json(currentScript);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Retorna todas as versões de um script específico
   app.get("/api/scripts/:scriptId/versions", async (req, res) => {
     try {
       const { scriptId } = req.params;
@@ -396,8 +407,18 @@ async function startServer() {
   app.post("/api/scripts/:scriptId/rollback/:versionId", async (req, res) => {
     try {
       const { scriptId, versionId } = req.params;
-      const rolledBackVersion = await rollbackScriptVersion(scriptId, versionId);
-      if (rolledBackVersion) {
+      const resultObj = await rollbackScriptVersion(scriptId, versionId);
+      if (resultObj) {
+        const { rolledBackVersion, oldVersionNumber } = resultObj;
+
+        // Grava mensagem automática do modelo/sistema sobre o rollback
+        const msgContent = `Versão v${oldVersionNumber} restaurada como a nova versão atual v${rolledBackVersion.version_number}.`;
+        await addChatMessage({
+          chat_id: rolledBackVersion.chat_id,
+          role: 'model',
+          content: `🔄 **[Restauração do Projeto]** ${msgContent}`
+        });
+
         res.json({
           success: true,
           message: "Versão restaurada com sucesso como nova versão atual.",

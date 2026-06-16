@@ -22,6 +22,7 @@ export default function ChatView({ currentTab }: ChatViewProps) {
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [activeScript, setActiveScript] = useState<GeneratedScript | null>(null);
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
+  const [copiedResource, setCopiedResource] = useState(false);
   const [scriptExpanded, setScriptExpanded] = useState(true);
 
   // PROJETO VIVO - continuous history states
@@ -86,11 +87,10 @@ export default function ChatView({ currentTab }: ChatViewProps) {
 
   const fetchChatScript = async (chatId: string) => {
     try {
-      const res = await fetch('/api/scripts');
+      const res = await fetch(`/api/chats/${chatId}/current-script`);
       if (res.ok) {
-        const data: GeneratedScript[] = await res.json();
-        const chatScript = data.find(s => s.chat_id === chatId);
-        if (chatScript) {
+        const chatScript: GeneratedScript | null = await res.json();
+        if (chatScript && chatScript.id) {
           setActiveScript(chatScript);
           
           // Auto-select first file if not set or invalid for selected script
@@ -111,7 +111,7 @@ export default function ChatView({ currentTab }: ChatViewProps) {
         }
       }
     } catch (err) {
-      console.error('Error fetching scripts:', err);
+      console.error('Error fetching current script for chat:', err);
     }
   };
 
@@ -191,6 +191,16 @@ export default function ChatView({ currentTab }: ChatViewProps) {
     navigator.clipboard.writeText(code);
     setCopiedFile(filename);
     setTimeout(() => setCopiedFile(null), 2000);
+  };
+
+  const handleCopyEntireResource = (script: GeneratedScript) => {
+    let result = '';
+    Object.entries(script.files).forEach(([filename, code]) => {
+      result += `=== ${filename} ===\n${code}\n\n`;
+    });
+    navigator.clipboard.writeText(result.trim());
+    setCopiedResource(true);
+    setTimeout(() => setCopiedResource(false), 2000);
   };
 
   const toggleContextAccordion = (msgId: string) => {
@@ -560,6 +570,24 @@ export default function ChatView({ currentTab }: ChatViewProps) {
                           <>
                             {/* COPY FLOATING BUTTON */}
                             <div className="absolute right-4 top-4 z-10 flex gap-2">
+                              <button
+                                onClick={() => handleCopyEntireResource(activeScript)}
+                                className="p-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded transition flex items-center gap-1 text-[10px]"
+                                title="Copiar todos os arquivos em um único texto organizado"
+                              >
+                                {copiedResource ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-emerald-400">Resource Copiado!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Copiar Resource Inteiro</span>
+                                  </>
+                                )}
+                              </button>
+
                               <button
                                 onClick={() => handleCopyCode(selectedFile, activeScript.files[selectedFile])}
                                 className="p-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded transition flex items-center gap-1 text-[10px]"

@@ -12,6 +12,7 @@ export default function ScriptsView({ currentTab }: ScriptsViewProps) {
   const [selectedScript, setSelectedScript] = useState<GeneratedScript | null>(null);
   const [selectedFile, setSelectedFile] = useState<string>('');
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
+  const [copiedResource, setCopiedResource] = useState(false);
 
   useEffect(() => {
     fetchScripts();
@@ -50,6 +51,16 @@ export default function ScriptsView({ currentTab }: ScriptsViewProps) {
     navigator.clipboard.writeText(code);
     setCopiedFile(filename);
     setTimeout(() => setCopiedFile(null), 2000);
+  };
+
+  const handleCopyEntireResource = (script: GeneratedScript) => {
+    let result = '';
+    Object.entries(script.files).forEach(([filename, code]) => {
+      result += `=== ${filename} ===\n${code}\n\n`;
+    });
+    navigator.clipboard.writeText(result.trim());
+    setCopiedResource(true);
+    setTimeout(() => setCopiedResource(false), 2000);
   };
 
   return (
@@ -216,6 +227,24 @@ export default function ScriptsView({ currentTab }: ScriptsViewProps) {
                     <>
                       {/* FILE CHANGER FLOATING ACTIONS */}
                       <div className="absolute right-4 top-4 z-10 flex gap-2">
+                        <button
+                          onClick={() => handleCopyEntireResource(selectedScript)}
+                          className="p-1 px-2.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded transition flex items-center gap-1.5 text-[10px]"
+                          title="Copiar todos os arquivos em um único texto organizado"
+                        >
+                          {copiedResource ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-emerald-400">Resource Copiado!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copiar Resource Inteiro</span>
+                            </>
+                          )}
+                        </button>
+
                         <button
                           onClick={() => handleCopyCode(selectedFile, selectedScript.files[selectedFile])}
                           className="p-1 px-2.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded transition flex items-center gap-1.5 text-[10px]"

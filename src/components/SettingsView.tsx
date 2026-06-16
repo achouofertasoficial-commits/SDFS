@@ -184,11 +184,27 @@ export default function SettingsView({
       <div id="settings-form-block" className="flex-1 bg-neutral-950/60 p-6 border border-red-950/20 rounded-xl flex flex-col gap-6">
         <div>
           <h3 id="settings-title" className="font-sans font-bold text-sm text-neutral-100 flex items-center gap-2 uppercase tracking-wide">
-            <Settings className="w-4 h-4 text-red-500 animate-spin-slow" /> Configurador de Infraestrutura Real
+            <Settings className="w-4 h-4 text-red-500 animate-spin-slow" /> Configurador de Infraestrutura DEV
           </h3>
           <p className="text-[10px] text-neutral-500 font-mono mt-0.5">
-            Sincronize credenciais temporárias no runtime em memória do servidor
+            Sincronize credenciais temporárias sandbox no runtime em memória do servidor local
           </p>
+        </div>
+
+        {/* SECURITY BULLETIN BOARD (EXPRESSIVE CAUTION AS MANDATED) */}
+        <div className="bg-red-950/40 border border-red-900/50 p-4 rounded-xl flex flex-col gap-2.5 shadow-xl text-[11px] leading-relaxed">
+          <div className="flex items-start gap-2.5">
+            <ShieldAlert className="w-5 h-5 text-red-500 shrink-0 mt-0.5 animate-pulse" />
+            <div>
+              <strong className="text-red-400 font-extrabold text-xs uppercase tracking-wider block mb-1">🚨 DIRETRIZ DE SEGURANÇA - PRODUÇÃO VS SANDBOX</strong>
+              <p className="text-neutral-200">
+                Em produção no Cloud Run, <strong>utilize exclusivamente o painel Secrets (Secrets Manager)</strong> do seu console para injetar as chaves sensíveis (<code className="text-red-400 bg-neutral-920 px-1 py-0.5 rounded font-mono text-[9px]">GEMINI_API_KEY</code> e <code className="text-red-400 bg-neutral-920 px-1 py-0.5 rounded font-mono text-[9px]">SUPABASE_SERVICE_ROLE_KEY</code>) com total inviolabilidade.
+              </p>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-red-900/30 text-neutral-400 mt-1">
+            ⚠️ <span className="font-bold text-red-400 text-[10px] uppercase">Service Role Warning:</span> A chave <strong>Service Role Key</strong> possui privilégios de bypass sobre todas as regras RLS do seu banco de dados e <strong>nunca deve ser informada ou trafegada via formulários públicos</strong>. Os campos abaixo destinam-se unicamente ao runtime volátil sandbox de desenvolvimento local.
+          </div>
         </div>
 
         {statusMessage && (
@@ -207,7 +223,7 @@ export default function SettingsView({
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
               <label className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wilder flex items-center gap-1.5">
-                <Key className="w-3.5 h-3.5 text-red-500" /> Gemini API Key (Backend)
+                <Key className="w-3.5 h-3.5 text-red-500" /> Gemini API Key (Sandbox Local DEV)
               </label>
               <button
                 type="button"
@@ -225,7 +241,7 @@ export default function SettingsView({
               className="bg-neutral-900 border border-neutral-800 rounded px-3 py-2 text-xs placeholder-neutral-500 text-neutral-200 focus:outline-none focus:border-red-600"
             />
             <span className="text-[10px] text-neutral-500 font-mono">
-              Mantida estritamente no backend. Nunca exposta ao front-end ou ao navegador.
+              Mantida temporariamente na memória segura do servidor Express.
             </span>
           </div>
 
@@ -234,7 +250,7 @@ export default function SettingsView({
           {/* SUPABASE PROJECT URL */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wilder flex items-center gap-1.5">
-              <Server className="w-3.5 h-3.5 text-neutral-400" /> Supabase URL
+              <Server className="w-3.5 h-3.5 text-neutral-400" /> Supabase URL (Sandbox Local DEV)
             </label>
             <input
               type="text"
@@ -249,7 +265,7 @@ export default function SettingsView({
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
               <label className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wilder">
-                Supabase Anon Key
+                Supabase Anon Key (Sandbox Local DEV)
               </label>
               <button
                 type="button"
