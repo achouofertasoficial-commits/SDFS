@@ -61,6 +61,7 @@ interface RAGResponse {
     dependencies: string[];
     install_steps: string[];
     warnings: string[];
+    generated_by?: 'gemini' | 'mock' | 'manual';
   };
 }
 
@@ -157,7 +158,8 @@ Você deve responder rigorosamente no formato JSON especificado.`;
         files: parsed.scriptDetail.files || {},
         dependencies: parsed.scriptDetail.dependencies || ["rsg-core"],
         install_steps: parsed.scriptDetail.install_steps || ["Coloque na pasta resources", "Inicie no server.cfg"],
-        warnings: parsed.scriptDetail.warnings || []
+        warnings: parsed.scriptDetail.warnings || [],
+        generated_by: 'gemini'
       });
     }
 
@@ -171,7 +173,8 @@ Você deve responder rigorosamente no formato JSON especificado.`;
         files: parsed.scriptDetail.files || {},
         dependencies: parsed.scriptDetail.dependencies || [],
         install_steps: parsed.scriptDetail.install_steps || [],
-        warnings: parsed.scriptDetail.warnings || []
+        warnings: parsed.scriptDetail.warnings || [],
+        generated_by: 'gemini'
       } : undefined
     };
 
@@ -179,18 +182,18 @@ Você deve responder rigorosamente no formato JSON especificado.`;
     console.error("Erro na chamada da Gemini API / RAG Service:", error);
     
     // Gerador de script fallback inteligente para dar uma experiência fantástica mesmo na ausência de chaves
-    const isMock = userRequest.toLowerCase().includes("mineração") || userRequest.toLowerCase().includes("gold") || userRequest.toLowerCase().includes("ouro");
+    const isMock = userRequest.toLowerCase().includes("mineração") || userRequest.toLowerCase().includes("gold") || userRequest.toLowerCase().includes("ouro") || userRequest.toLowerCase().includes("bounty") || userRequest.toLowerCase().includes("procurado");
     
     if (isMock) {
       // Retorna uma simulação realista se o usuário estiver brincando com o exemplo padrão
       return {
-        content: `⚠️ [AMB-LOCAL / SEM CHAVE GEMINI] Notei que pediu um script de mineração. Como a chave GEMINI_API_KEY não foi configurada, estou gerando uma solução modelo estruturada a partir da base de conhecimento de fallback. 
+        content: `⚠️ [AMB-LOCAL / SEM CHAVE GEMINI] Notei que pediu um script técnico. Como a chave GEMINI_API_KEY não foi configurada, estou gerando uma solução modelo estruturada a partir da base de conhecimento de fallback. 
         Para obter scripts 100% personalizados para qualquer ideia de RedM, insira sua chave Gemini nas Configurações do app.`,
         hasScript: true,
         retrievedContext: relevantDocs,
         scriptDetail: {
           title: "rsg-mockmine",
-          description: "Protótipo simulado localmente de Mineração de Ouro utilizando RSG Framework",
+          description: "Protótipo simulado localmente de Recurso utilizando RSG Framework",
           files: {
             "fxmanifest.lua": `fx_version 'cerulean'\ngames { 'rdr3' }\nrdr3_warning 'Icknowwhatimdoing'\nauthor 'RSG Script Forge AI Fallback'\nshared_scripts { 'config.lua' }\nclient_scripts { 'client.lua' }\nserver_scripts { 'server.lua' }`,
             "config.lua": `Config = {}\nConfig.Location = vector3(-1189.2, -452.9, 45.1)\nConfig.MineTime = 4000\nConfig.Item = "gold_ore"`,
@@ -203,7 +206,8 @@ Você deve responder rigorosamente no formato JSON especificado.`;
             "Insira rsg-mockmine na pasta resources",
             "Inicie no seu server.cfg: ensure rsg-mockmine"
           ],
-          warnings: ["Este é um script de simulação local (Modo Demonstração) devido à ausência de chave API."]
+          warnings: ["Este é um script de simulação local (Modo Demonstração) devido à ausência de chave API."],
+          generated_by: 'mock'
         }
       };
     }

@@ -149,10 +149,34 @@ export default function ScriptsView({ currentTab }: ScriptsViewProps) {
               </div>
 
               {/* CHAT ID OR SOURCE */}
-              <div className="text-[10px] font-mono text-neutral-500 mt-1 uppercase flex items-center gap-1.5">
-                <Cpu className="w-3.5 h-3.5 text-neutral-500" /> ID Recurso: <span className="text-neutral-300">{selectedScript.id}</span>
+              <div className="flex justify-between items-center text-[10px] font-mono text-neutral-500 mt-1 uppercase">
+                <div className="flex items-center gap-1.5 font-sans">
+                  <Cpu className="w-3.5 h-3.5 text-neutral-500" /> ID Recurso: <span className="text-neutral-300 font-mono">{selectedScript.id}</span>
+                </div>
+                {selectedScript.generated_by && (
+                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${
+                    selectedScript.generated_by === 'gemini' 
+                      ? 'bg-emerald-950/30 text-emerald-400 border border-emerald-900/35' 
+                      : selectedScript.generated_by === 'manual'
+                      ? 'bg-blue-950/30 text-blue-400 border border-blue-900/35'
+                      : 'bg-yellow-950/35 text-yellow-500 border border-yellow-900/35'
+                  }`}>
+                    FONTE: {selectedScript.generated_by === 'gemini' ? 'Gemini AI API' : selectedScript.generated_by === 'manual' ? 'Manualmente Criado' : 'AI Fallback Mock Pattern'}
+                  </span>
+                )}
               </div>
             </div>
+
+            {/* STRONG ALERT FOR MOCK-GENERATED SCRIPTS */}
+            {selectedScript.generated_by === 'mock' && (
+              <div className="mx-5 mt-4 p-3 bg-yellow-950/20 border border-yellow-905/40 text-yellow-500 text-xs rounded-lg flex items-start gap-2.5 leading-relaxed font-sans shadow-lg shadow-yellow-950/10">
+                <AlertTriangle className="w-5 h-5 shrink-0 text-yellow-500 mt-0.5" />
+                <div>
+                  <strong className="text-yellow-400 font-extrabold uppercase block mb-1">Aviso de Simulação (Modelo Didático Fallback)</strong>
+                  Este script foi gerado através do fallback de simulação do RSG Forge devido à ausência ou inatividade da chave de API Gemini no momento da geração. O código é estrutural e ilustrativo para demonstração das capacidades de scaffolding local.
+                </div>
+              </div>
+            )}
 
             {/* TWO PANELS: FILE CODE VIEWER (TOP), STEP/WARNING BANNER (BOTTOM) */}
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden max-h-full">

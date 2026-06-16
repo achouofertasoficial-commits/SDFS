@@ -39,6 +39,7 @@ export interface GeneratedScript {
   dependencies: string[];
   install_steps: string[];
   warnings: string[];
+  generated_by?: 'gemini' | 'mock' | 'manual';
   created_at?: string;
 }
 

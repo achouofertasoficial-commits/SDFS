@@ -116,6 +116,67 @@ export async function addDocument(doc: Omit<KnowledgeDocument, 'id' | 'created_a
   return newDoc;
 }
 
+export async function updateDocument(id: string, doc: Partial<Omit<KnowledgeDocument, 'id' | 'created_at' | 'updated_at'>>): Promise<KnowledgeDocument | null> {
+  const updated_at = new Date().toISOString();
+  
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('knowledge_documents')
+        .update({ ...doc, updated_at })
+        .eq('id', id)
+        .select();
+      if (!error && data && data[0]) {
+        // Also update locally just in case they both run
+        const idx = localStore.documents.findIndex(d => d.id === id);
+        if (idx !== -1) {
+          localStore.documents[idx] = { ...localStore.documents[idx], ...doc, updated_at };
+        }
+        return data[0] as KnowledgeDocument;
+      }
+      console.warn('Supabase updateDocument error, performing locally:', error);
+    } catch (err) {
+      console.error('Exception updating document in Supabase:', err);
+    }
+  }
+
+  const idx = localStore.documents.findIndex(d => d.id === id);
+  if (idx !== -1) {
+    const updatedDoc = { ...localStore.documents[idx], ...doc, updated_at };
+    localStore.documents[idx] = updatedDoc;
+    return updatedDoc;
+  }
+  return null;
+}
+
+export async function deleteDocument(id: string): Promise<boolean> {
+  if (supabase) {
+    try {
+      const { error } = await supabase
+        .from('knowledge_documents')
+        .delete()
+        .eq('id', id);
+      if (!error) {
+        const idx = localStore.documents.findIndex(d => d.id === id);
+        if (idx !== -1) {
+          localStore.documents.splice(idx, 1);
+        }
+        return true;
+      }
+      console.warn('Supabase deleteDocument error, performing locally:', error);
+    } catch (err) {
+      console.error('Exception deleting document in Supabase:', err);
+    }
+  }
+
+  const idx = localStore.documents.findIndex(d => d.id === id);
+  if (idx !== -1) {
+    localStore.documents.splice(idx, 1);
+    return true;
+  }
+  return false;
+}
+
 export async function searchDocuments(query: string, category?: string): Promise<KnowledgeDocument[]> {
   let docs = await getDocuments();
 
@@ -264,6 +325,7 @@ export async function saveGeneratedScript(script: Omit<GeneratedScript, 'id' | '
   const newScript: GeneratedScript = {
     ...script,
     id: crypto.randomUUID ? crypto.randomUUID() : 'script_' + Math.random().toString(36).substring(2, 9),
+    generated_by: script.generated_by || 'gemini',
     created_at: new Date().toISOString()
   };
 

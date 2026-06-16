@@ -190,22 +190,36 @@ export default function SettingsView({
             <Cpu className="w-3.5 h-3.5" /> Estado Ativo de Ingress
           </h4>
 
-          <div className="flex flex-col gap-2.5 text-xs font-mono">
-            <div className="flex justify-between items-center py-1 border-b border-neutral-900">
-              <span className="text-neutral-500">Gemini 3.5 Ready</span>
-              <span className={geminiConfigured ? 'text-emerald-400' : 'text-amber-500'}>
-                {geminiConfigured ? 'SIM (ACTIVE)' : 'Pendente'}
+          <div className="flex flex-col gap-3.5 text-xs font-mono mt-1">
+            {/* Supabase states */}
+            <div className="flex flex-col gap-1 border-b border-neutral-900 pb-2">
+              <div className="flex justify-between items-center">
+                <span className="text-neutral-400">Banco Supabase</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${supabaseConnected ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-900/60' : 'text-yellow-500 bg-yellow-950/40 border border-yellow-904/40'}`}>
+                  {supabaseConnected ? 'CONECTADO' : 'NÃO CONFIGURADO'}
+                </span>
+              </div>
+              <span className="text-[9px] text-neutral-500 font-sans leading-normal">
+                {supabaseConnected ? '✓ Banco ativo. Sincronizando RAG e Chats reais.' : '⚠ Usando fallback local / mock em memória.'}
               </span>
             </div>
-            <div className="flex justify-between items-center py-1 border-b border-neutral-900">
-              <span className="text-neutral-500">Supabase DB Client</span>
-              <span className={supabaseConnected ? 'text-emerald-400 font-bold' : 'text-amber-500'}>
-                {supabaseConnected ? 'CONECTADO' : 'MOCK FALLBACK'}
+
+            {/* Gemini states */}
+            <div className="flex flex-col gap-1 border-b border-neutral-900 pb-2">
+              <div className="flex justify-between items-center">
+                <span className="text-neutral-400">Gemini Key</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold ${geminiConfigured ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-900/60' : 'text-yellow-500 bg-yellow-950/40 border border-yellow-904/40'}`}>
+                  {geminiConfigured ? 'CONECTADA' : 'SEM CHAVE'}
+                </span>
+              </div>
+              <span className="text-[9px] text-neutral-500 font-sans leading-normal">
+                {geminiConfigured ? '✓ Conexão real ativa. IA está gerando código real.' : '⚠ Gemini sem chave (Usando resposta mock).'}
               </span>
             </div>
-            <div className="flex justify-between items-center py-1 border-b border-neutral-900">
+
+            <div className="flex justify-between items-center py-1">
               <span className="text-neutral-500">Framework Target</span>
-              <span className="text-red-400">RSG CORE v1.9+</span>
+              <span className="text-red-400 font-bold">RSG Core v1.9+</span>
             </div>
           </div>
         </div>
@@ -218,7 +232,7 @@ export default function SettingsView({
           
           <div className="text-xs text-neutral-400 font-sans leading-relaxed flex flex-col gap-3.5">
             <p>
-              ⚠️ <strong className="text-white">Isolamento de Chaves:</strong> A API Key do Gemini (e o token secreto do Supabase) **NUNCA** deve ser exposta diretamente no código cliente (Javascript do navegador) em produção.
+              ⚠️ <strong className="text-white">Aviso Técnico de Produção:</strong> Em ambientes de produção reais, **TODAS as variáveis sensíveis (chaves de API, credenciais Supabase)** devem ficar guardadas com segurança em **variáveis de ambiente do servidor** no arquivo <code className="text-red-400 bg-neutral-900 px-1 font-mono rounded text-[10px]">.env</code> privado ou secret manager do provedor de nuvem.
             </p>
             <p>
               🛡️ No modelo full-stack deste MVP, implementamos a arquitetura ideal: todas as requisições à Gemini API e ao Supabase passam exclusivamente por rotas de proxy seguras (<code className="text-red-400 bg-neutral-900 px-1 font-mono rounded text-[10px]">/api/*</code>) dentro do nosso servidor Express rodando no container Cloud Run.

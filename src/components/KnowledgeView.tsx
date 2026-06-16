@@ -13,6 +13,9 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDocument | null>(null);
 
+  // Editing states
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+
   // Form states
   const [isSubmitLoading, setIsSubmitLoading] = useState(false);
   const [formStatus, setFormStatus] = useState<{ success?: boolean; message?: string } | null>(null);
@@ -47,8 +50,8 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
   const fetchDocuments = async () => {
     try {
       const url = selectedCategory === 'all' 
-        ? '/api/kb/documents' 
-        : `/api/kb/search?category=${encodeURIComponent(selectedCategory)}`;
+          ? '/api/kb/documents' 
+          : `/api/kb/search?category=${encodeURIComponent(selectedCategory)}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
@@ -90,6 +93,57 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
     });
   };
 
+  const startEditing = (doc: KnowledgeDocument) => {
+    setEditingDocId(doc.id);
+    setFormData({
+      title: doc.title,
+      category: doc.category,
+      subcategory: doc.subcategory || '',
+      framework: doc.framework,
+      content_type: doc.content_type || 'documentação',
+      source_url: doc.source_url || '',
+      trust_level: doc.trust_level,
+      tagsString: doc.tags ? doc.tags.join(', ') : '',
+      content: doc.content,
+      technical_notes: doc.technical_notes || ''
+    });
+    setFormStatus(null);
+    document.getElementById("knowledge-uploader")?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const cancelEditing = () => {
+    setEditingDocId(null);
+    resetForm();
+    setFormStatus(null);
+  };
+
+  const handleDeleteDoc = async (id: string) => {
+    if (!window.confirm('Tem certeza de que deseja excluir este documento permanentemente da base Supabase RAG?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/kb/documents/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        setDocuments(prev => prev.filter(d => d.id !== id));
+        if (selectedDoc?.id === id) {
+          setSelectedDoc(null);
+        }
+        if (editingDocId === id) {
+          cancelEditing();
+        }
+        setFormStatus({ success: true, message: 'Documento deletado do banco com sucesso!' });
+      } else {
+        const data = await res.json();
+        setFormStatus({ success: false, message: `Erro ao excluir: ${data.error || 'Erro desconhecido'}` });
+      }
+    } catch (err) {
+      console.error('Error deleting doc:', err);
+      setFormStatus({ success: false, message: 'Falha de comunicação com o servidor.' });
+    }
+  };
+
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.content) {
@@ -111,18 +165,29 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
     };
 
     try {
-      const res = await fetch('/api/kb/documents', {
-        method: 'POST',
+      const url = editingDocId ? `/api/kb/documents/${editingDocId}` : '/api/kb/documents';
+      const method = editingDocId ? 'PUT' : 'POST';
+      
+      const res = await fetch(url, {
+        method: method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
       if (res.ok) {
-        const createdDoc = await res.json();
-        setDocuments(prev => [createdDoc, ...prev]);
-        setSelectedDoc(createdDoc);
-        setFormStatus({ success: true, message: 'Documento anexado com sucesso à base Supabase RAG!' });
-        resetForm();
+        const resultDoc = await res.json();
+        if (editingDocId) {
+          setDocuments(prev => prev.map(d => d.id === editingDocId ? resultDoc : d));
+          setSelectedDoc(resultDoc);
+          setFormStatus({ success: true, message: 'Documento atualizado na base Supabase RAG!' });
+          setEditingDocId(null);
+          resetForm();
+        } else {
+          setDocuments(prev => [resultDoc, ...prev]);
+          setSelectedDoc(resultDoc);
+          setFormStatus({ success: true, message: 'Documento anexado com sucesso à base Supabase RAG!' });
+          resetForm();
+        }
       } else {
         const errData = await res.json();
         setFormStatus({ success: false, message: `Erro ao salvar documento: ${errData.error || 'Erro no servidor'}` });
@@ -237,10 +302,10 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
         {/* EXPANDED DOCUMENT VIEWER MODAL/DETAILS AREA AT BOTTOM IF SELECTED */}
         {selectedDoc && (
           <div className="border-t border-red-950/20 pt-3 flex flex-col gap-2 max-h-[45%] overflow-y-auto">
-            <div className="flex items-start justify-between">
-              <div>
-                <h4 className="text-xs font-sans font-extrabold text-white uppercase">{selectedDoc.title}</h4>
-                <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h4 className="text-xs font-sans font-extrabold text-white uppercase break-words">{selectedDoc.title}</h4>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
                   <span className="text-[9px] font-mono bg-red-950/30 text-red-400 border border-red-900/50 px-1.5 py-0.5 rounded font-bold uppercase tracking-wide">
                     {selectedDoc.category} • {selectedDoc.subcategory || 'Boilerplate'}
                   </span>
@@ -251,8 +316,22 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-1 bg-neutral-900 px-2 py-1 rounded text-[9px] font-mono text-neutral-400">
-                <Award className="w-3.5 h-3.5 text-amber-500" /> Confiança: <span className="text-white font-bold">{selectedDoc.trust_level.toUpperCase()}</span>
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => startEditing(selectedDoc)}
+                  className="px-2 py-1 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[10px] font-mono text-neutral-300 rounded transition-colors"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => handleDeleteDoc(selectedDoc.id)}
+                  className="px-2 py-1 bg-red-950 hover:bg-red-900 border border-red-900/50 text-[10px] font-mono text-red-300 rounded transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3 text-red-400" /> Excluir
+                </button>
+                <div className="flex items-center gap-1 bg-neutral-900 px-2 py-1 rounded text-[9px] font-mono text-neutral-400">
+                  <Award className="w-3.5 h-3.5 text-amber-500 font-bold" /> <span className="text-white font-bold">{selectedDoc.trust_level.toUpperCase()}</span>
+                </div>
               </div>
             </div>
 
@@ -273,8 +352,20 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
 
       {/* 1/3 COLUMN: RIGHT HAND CADASTRO DIRECT FORM */}
       <div id="knowledge-uploader" className="w-full md:w-[380px] bg-neutral-950/60 p-5 border border-red-950/20 rounded-xl overflow-y-auto max-h-full">
-        <h3 className="font-sans font-bold text-sm text-neutral-100 flex items-center gap-1.5 uppercase tracking-wide border-b border-red-950/15 pb-3">
-          <Plus className="w-4 h-4 text-red-500" /> Cadastrar Conhecimento
+        <h3 className="font-sans font-bold text-sm text-neutral-100 flex items-center justify-between uppercase tracking-wide border-b border-red-950/15 pb-3">
+          <span className="flex items-center gap-1.5">
+            <Plus className="w-4 h-4 text-red-500" /> 
+            {editingDocId ? 'Editar Conhecimento' : 'Cadastrar Conhecimento'}
+          </span>
+          {editingDocId && (
+            <button
+              type="button"
+              onClick={cancelEditing}
+              className="text-[10px] font-mono lowercase border border-neutral-800 text-neutral-400 bg-neutral-900 hover:text-white px-2 py-0.5 rounded transition-all"
+            >
+              [cancelar]
+            </button>
+          )}
         </h3>
 
         {/* FEEDBACK BANNER */}
@@ -429,7 +520,7 @@ export default function KnowledgeView({ currentTab }: KnowledgeViewProps) {
             disabled={isSubmitLoading}
             className="w-full mt-2 py-3 bg-red-700 hover:bg-red-600 active:bg-red-800 disabled:opacity-50 text-white font-sans font-semibold text-xs rounded-lg transition-colors shadow-lg hover:shadow-red-900/20"
           >
-            {isSubmitLoading ? 'Indexando no Supabase...' : 'Indexar Tópico no RAG Base'}
+            {isSubmitLoading ? 'Enviando alterações...' : (editingDocId ? 'Atualizar Tópico na Base' : 'Indexar Tópico no RAG Base')}
           </button>
         </form>
       </div>

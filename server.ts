@@ -9,6 +9,8 @@ dotenv.config();
 import { 
   getDocuments, 
   addDocument, 
+  updateDocument,
+  deleteDocument,
   searchDocuments, 
   getChats, 
   createChat, 
@@ -90,6 +92,48 @@ async function startServer() {
       });
 
       res.status(201).json(newDoc);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/kb/documents/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title, category, subcategory, framework, content_type, source_url, trust_level, tags, content, technical_notes } = req.body;
+      
+      const updated = await updateDocument(id, {
+        title,
+        category,
+        subcategory: subcategory === null ? undefined : subcategory,
+        framework: framework || 'RSG',
+        content_type,
+        source_url: source_url === null ? undefined : source_url,
+        trust_level,
+        tags: Array.isArray(tags) ? tags : [],
+        content,
+        technical_notes: technical_notes === null ? undefined : technical_notes
+      });
+
+      if (updated) {
+        res.json(updated);
+      } else {
+        res.status(404).json({ error: "Documento não encontrado para edição." });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/kb/documents/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await deleteDocument(id);
+      if (success) {
+        res.json({ success: true, message: "Documento excluído com sucesso." });
+      } else {
+        res.status(404).json({ error: "Documento não encontrado para exclusão." });
+      }
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

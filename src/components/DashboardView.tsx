@@ -144,18 +144,36 @@ export default function DashboardView({
           </h4>
 
           <div className="flex flex-col gap-3 mt-1">
-            <div className="flex items-center justify-between text-xs font-mono p-3 rounded-lg bg-neutral-900/40 border border-neutral-900">
-              <span className="text-neutral-400">Banco de Dados Supabase</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${supabaseConnected ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-900/60' : 'text-amber-500 bg-amber-950/40 border border-amber-900/60'}`}>
-                {supabaseConnected ? 'CONECTADO REAL' : 'SANDBOX SIMULADO'}
-              </span>
+            <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-neutral-900/40 border border-neutral-900">
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="text-neutral-400">Banco de Dados Supabase</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${supabaseConnected ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-900/60' : 'text-amber-500 bg-amber-950/40 border border-amber-900/60'}`}>
+                  {supabaseConnected ? 'SUPABASE CONECTADO' : 'FALLBACK LOCAL / MOCK'}
+                </span>
+              </div>
+              <div className="text-[10px] font-mono text-neutral-500 mt-1 leading-relaxed">
+                {supabaseConnected ? (
+                  <span className="text-emerald-500/90 font-sans">✓ Conectado real à nuvem. Dados persistidos com segurança.</span>
+                ) : (
+                  <span className="text-amber-500/90 font-sans">⚠ Supabase não configurado. Utilizando armazenamento local temporário.</span>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center justify-between text-xs font-mono p-3 rounded-lg bg-neutral-900/40 border border-neutral-900">
-              <span className="text-neutral-400">Gemini Engine (3.5 Flash)</span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${geminiConfigured ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-900/60' : 'text-amber-500 bg-amber-950/40 border border-amber-900/60'}`}>
-                {geminiConfigured ? 'PRONTA' : 'NÃO CONFIGURADA'}
-              </span>
+            <div className="flex flex-col gap-1.5 p-3 rounded-lg bg-neutral-900/40 border border-neutral-900">
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="text-neutral-400">Gemini Engine (3.5 Flash)</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${geminiConfigured ? 'text-emerald-400 bg-emerald-950/40 border border-emerald-900/60' : 'text-amber-500 bg-amber-950/40 border border-amber-900/60'}`}>
+                  {geminiConfigured ? 'GEMINI CONECTADA' : 'GEMINI USANDO RESPOSTA MOCK'}
+                </span>
+              </div>
+              <div className="text-[10px] font-mono text-neutral-500 mt-1 leading-relaxed">
+                {geminiConfigured ? (
+                  <span className="text-emerald-500/90 font-sans">✓ Chave ativa. Gerador de IA operacional gerando código real.</span>
+                ) : (
+                  <span className="text-amber-500/90 font-sans">⚠ Gemini sem chave. Fornecendo modelos informativos padrão (Simulado).</span>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center justify-between text-xs font-mono p-3 rounded-lg bg-neutral-900/40 border border-neutral-900">

@@ -3,10 +3,10 @@
 -- Place these queries inside your Supabase SQL Editor.
 -- ==========================================
 
--- Enable UI search or pgvector extension if needed
+-- Enable pgvector if you decide to activate semantic vectors
 -- CREATE EXTENSION IF NOT EXISTS vector;
 
--- 1. Tabela: knowledge_documents
+-- 1. Table: knowledge_documents
 CREATE TABLE IF NOT EXISTS knowledge_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
@@ -19,46 +19,75 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
     tags TEXT[] DEFAULT '{}',
     content TEXT NOT NULL,
     technical_notes TEXT,
-    -- campo futuro para embeddings (comentado caso o pgvector não esteja ativo)
-    -- embedding vector(1536), 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Criar índices de busca textual simples de fallback
+-- Indices for categorization and RAG filtering optimization
 CREATE INDEX IF NOT EXISTS idx_kb_title ON knowledge_documents(title);
 CREATE INDEX IF NOT EXISTS idx_kb_category ON knowledge_documents(category);
+CREATE INDEX IF NOT EXISTS idx_kb_content_type ON knowledge_documents(content_type);
+CREATE INDEX IF NOT EXISTS idx_kb_framework ON knowledge_documents(framework);
+CREATE INDEX IF NOT EXISTS idx_kb_tags ON knowledge_documents USING gin(tags);
 
--- 2. Tabela: ai_chats
+-- 2. Table: ai_chats
 CREATE TABLE IF NOT EXISTS ai_chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT DEFAULT 'Novo Script Chat',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. Tabela: ai_messages
+-- 3. Table: ai_messages
 CREATE TABLE IF NOT EXISTS ai_messages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID REFERENCES ai_chats(id) ON DELETE CASCADE,
     role TEXT NOT NULL, -- 'user', 'model', 'system'
     content TEXT NOT NULL,
-    retrieved_context JSONB, -- Array de documentos de contexto resgatados
+    retrieved_context JSONB DEFAULT '[]'::jsonb, -- Array of source reference docs used
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. Tabela: generated_scripts
+-- 4. Table: generated_scripts
 CREATE TABLE IF NOT EXISTS generated_scripts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID REFERENCES ai_chats(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     description TEXT,
     framework TEXT DEFAULT 'RSG',
-    files JSONB NOT NULL DEFAULT '{}'::jsonb, -- Estrutura { "client.lua": "...", "server.lua": "..." }
+    files JSONB NOT NULL DEFAULT '{}'::jsonb, -- Structure { "client.lua": "...", "server.lua": "..." }
     dependencies TEXT[] DEFAULT '{}',
     install_steps TEXT[] DEFAULT '{}',
     warnings TEXT[] DEFAULT '{}',
+    generated_by TEXT NOT NULL DEFAULT 'gemini' CHECK (generated_by IN ('gemini', 'mock', 'manual')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Indices for script relationship tracking
+CREATE INDEX IF NOT EXISTS idx_scripts_chat_id ON generated_scripts(chat_id);
+CREATE INDEX IF NOT EXISTS idx_scripts_generated_by ON generated_scripts(generated_by);
+
+-- 5. Table: app_configurations
+CREATE TABLE IF NOT EXISTS app_configurations (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Automatic updated_at Function
+CREATE OR REPLACE FUNCTION update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger for knowledge_documents
+DROP TRIGGER IF EXISTS trigger_update_kb_time ON knowledge_documents;
+CREATE TRIGGER trigger_update_kb_time
+    BEFORE UPDATE ON knowledge_documents
+    FOR EACH ROW
+    EXECUTE FUNCTION update_modified_column();
 
 -- ==========================================
 -- SEED DATA - Carga Inicial Recomendada
