@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Plus, MessageSquare, Terminal, Eye, Copy, Check, FileCode, AlertTriangle, 
-  HelpCircle, ChevronDown, ChevronRight, Server, BookOpen, Layers, RefreshCw
+  HelpCircle, ChevronDown, ChevronRight, Server, BookOpen, Layers, RefreshCw, History, GitCommit
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { AIChat, AIMessage, GeneratedScript, KnowledgeDocument } from '../types';
+import { AIChat, AIMessage, GeneratedScript, KnowledgeDocument, ScriptVersion } from '../types';
 
 interface ChatViewProps {
   currentTab: string;
@@ -24,6 +24,12 @@ export default function ChatView({ currentTab }: ChatViewProps) {
   const [copiedFile, setCopiedFile] = useState<string | null>(null);
   const [scriptExpanded, setScriptExpanded] = useState(true);
 
+  // PROJETO VIVO - continuous history states
+  const [versions, setVersions] = useState<ScriptVersion[]>([]);
+  const [codeSubTab, setCodeSubTab] = useState<'source' | 'versions'>('source');
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restorationAlert, setRestorationAlert] = useState<string | null>(null);
+
   // Track expanded context documents accordion for each message
   const [expandedContexts, setExpandedContexts] = useState<Record<string, boolean>>({});
 
@@ -42,6 +48,7 @@ export default function ChatView({ currentTab }: ChatViewProps) {
     } else {
       setMessages([]);
       setActiveScript(null);
+      setVersions([]);
     }
   }, [activeChat]);
 
@@ -85,13 +92,22 @@ export default function ChatView({ currentTab }: ChatViewProps) {
         const chatScript = data.find(s => s.chat_id === chatId);
         if (chatScript) {
           setActiveScript(chatScript);
-          // Auto-select first file
+          
+          // Auto-select first file if not set or invalid for selected script
           const files = Object.keys(chatScript.files);
-          if (files.length > 0) {
+          if (files.length > 0 && (!selectedFile || !chatScript.files[selectedFile])) {
             setSelectedFile(files[0]);
+          }
+
+          // Fetch script versions history for the current script
+          const vRes = await fetch(`/api/scripts/${chatScript.id}/versions`);
+          if (vRes.ok) {
+            const vData = await vRes.json();
+            setVersions(vData);
           }
         } else {
           setActiveScript(null);
+          setVersions([]);
         }
       }
     } catch (err) {
@@ -184,8 +200,41 @@ export default function ChatView({ currentTab }: ChatViewProps) {
     }));
   };
 
+  const handleRestoreVersion = async (versionId: string) => {
+    if (!activeScript) return;
+    setIsRestoring(true);
+    setRestorationAlert(null);
+    try {
+      const res = await fetch(`/api/scripts/${activeScript.id}/rollback/${versionId}`, {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRestorationAlert(`Versão restaurada com sucesso como nova versão atual (v${data.version.version_number}).`);
+        
+        // Refresh scripts/versions list and message logs
+        await fetchChatScript(activeScript.chat_id);
+        await fetchMessages(activeScript.chat_id);
+        
+        // Automatically pivot back to showing active source files
+        setCodeSubTab('source');
+        
+        // Auto-dismiss alert after 5s
+        setTimeout(() => setRestorationAlert(null), 5000);
+      } else {
+        const data = await res.json();
+        alert(`Erro ao restaurar versão: ${data.error || "Erro desconhecido"}`);
+      }
+    } catch (err) {
+      console.error('Exception performing continuous script restoration:', err);
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
   return (
     <div id="chat-workspace" className="h-[90vh] flex overflow-hidden border border-red-950/20 rounded-xl bg-neutral-950 text-neutral-200">
+
       
       {/* SESSIONS LEFT COLUMN */}
       <div id="chat-sessions" className="w-64 border-r border-red-950/20 bg-neutral-950/60 flex flex-col justify-between max-h-full">
@@ -234,24 +283,51 @@ export default function ChatView({ currentTab }: ChatViewProps) {
         <div className="flex-1 flex flex-col justify-between h-full bg-neutral-950">
           
           {/* HEADER CHAT INFO */}
-          <div className="p-4 border-b border-red-950/20 bg-neutral-950 flex items-center justify-between">
+          <div className="p-4 border-b border-red-950/20 bg-neutral-950 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="text-sm font-sans font-bold text-white uppercase tracking-wider">
-                {activeChat ? activeChat.title : 'Nenhum Chat Selecionado'}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-sans font-bold text-white uppercase tracking-wider">
+                  {activeChat ? activeChat.title : 'Nenhum Chat Selecionado'}
+                </h3>
+                {activeScript && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-950/50 text-emerald-400 border border-emerald-900/40 text-[9px] font-mono font-medium tracking-tight">
+                    v{activeScript.version_count || 1} (versão atual)
+                  </span>
+                )}
+              </div>
               <p className="text-[10px] text-neutral-500 font-mono mt-0.5">
-                RAG PIPELINE ATIVO • BUSCA DE DOCUMENTAÇÃO SUPABASE E ARQUIVOS MODELO
+                {activeScript ? `PROJETO: ${activeScript.title.toUpperCase()} • EVOLUÇÃO CONTÍNUA` : 'RAG PIPELINE ATIVO • CRIAÇÃO DE SCRIPTS REDM'}
               </p>
             </div>
-            {activeChat && (
-              <button 
-                onClick={() => { fetchMessages(activeChat.id); fetchChatScript(activeChat.id); }} 
-                className="p-1 px-2 border border-neutral-800 rounded bg-neutral-900 text-[10px] font-mono text-neutral-400 hover:text-white flex items-center gap-1 hover:border-neutral-700 transition"
-                title="Recarregar esta conversa"
-              >
-                <RefreshCw className="w-3 h-3 animate-spin duration-1000" /> Sincronizar
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {activeScript && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCodeSubTab(codeSubTab === 'versions' ? 'source' : 'versions');
+                    setScriptExpanded(true);
+                  }}
+                  className={`p-1 px-2 border rounded text-[10px] font-mono flex items-center gap-1 transition-all ${
+                    codeSubTab === 'versions'
+                      ? 'border-red-900 bg-red-950/30 text-red-300'
+                      : 'border-neutral-800 bg-neutral-900 text-neutral-400 hover:text-white hover:border-neutral-700'
+                  }`}
+                  title="Histórico de Versões do Script"
+                >
+                  <History className="w-3 h-3 text-red-500" />
+                  <span>Histórico ({versions.length})</span>
+                </button>
+              )}
+              {activeChat && (
+                <button 
+                  onClick={() => { fetchMessages(activeChat.id); fetchChatScript(activeChat.id); }} 
+                  className="p-1 px-2 border border-neutral-800 rounded bg-neutral-900 text-[10px] font-mono text-neutral-400 hover:text-white flex items-center gap-1 hover:border-neutral-700 transition"
+                  title="Recarregar esta conversa"
+                >
+                  <RefreshCw className="w-3 h-3" /> Sincronizar
+                </button>
+              )}
+            </div>
           </div>
 
           {/* CHAT MESSAGES PANEL */}
@@ -401,6 +477,17 @@ export default function ChatView({ currentTab }: ChatViewProps) {
                 </button>
               </div>
 
+              {/* RESTORATION SUCCESS ALERT BANNER */}
+              {restorationAlert && (
+                <div className="bg-emerald-950/80 border-b border-emerald-900/40 p-3 mx-4 mt-3 rounded-lg flex items-center justify-between gap-2 text-emerald-400 text-xs leading-relaxed font-sans shadow-md">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 shrink-0" />
+                    <span>{restorationAlert}</span>
+                  </div>
+                  <button onClick={() => setRestorationAlert(null)} className="text-[10px] uppercase font-mono tracking-tight text-neutral-400 hover:text-white">Fechar</button>
+                </div>
+              )}
+
               {/* WARNING BOX FOR SIMULATED SCRIPT */}
               {activeScript.generated_by === 'mock' && (
                 <div className="bg-yellow-950/30 border-b border-yellow-900/40 p-3.5 mx-4 mt-3 rounded-lg flex items-start gap-2.5 text-yellow-500 text-[11px] leading-relaxed font-sans shadow-md">
@@ -414,83 +501,192 @@ export default function ChatView({ currentTab }: ChatViewProps) {
 
               {scriptExpanded ? (
                 <>
-                  {/* FILE SELECTOR TABS */}
-                  <div className="flex border-b border-neutral-900/60 bg-neutral-950/40 overflow-x-auto text-[10px] font-mono select-none">
-                    {Object.keys(activeScript.files).map(filename => (
-                      <button
-                        key={filename}
-                        onClick={() => setSelectedFile(filename)}
-                        className={`px-3.5 py-2.5 border-r border-neutral-900/60 transition-all ${
-                          selectedFile === filename 
-                            ? 'bg-neutral-900 text-red-400 border-b-2 border-b-red-700 font-bold' 
-                            : 'text-neutral-500 hover:text-neutral-300 bg-neutral-950'
-                        }`}
-                      >
-                        {filename}
-                      </button>
-                    ))}
+                  {/* SUB TAB BAR: CODE vs VERSIONS */}
+                  <div className="flex border-b border-red-950/20 bg-neutral-950 select-none">
+                    <button
+                      type="button"
+                      onClick={() => setCodeSubTab('source')}
+                      className={`flex-1 text-center py-2.5 text-xs font-mono transition-all border-b-2 flex items-center justify-center gap-1.5 ${
+                        codeSubTab === 'source'
+                          ? 'border-b-red-600 text-red-00 bg-neutral-900/40 font-bold text-red-400'
+                          : 'border-b-transparent text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      <FileCode className="w-3.5 h-3.5" />
+                      <span>📁 Código-Fonte</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCodeSubTab('versions')}
+                      className={`flex-1 text-center py-2.5 text-xs font-mono transition-all border-b-2 flex items-center justify-center gap-1.5 ${
+                        codeSubTab === 'versions'
+                          ? 'border-b-red-600 text-red-100 bg-neutral-900/40 font-bold text-red-400'
+                          : 'border-b-transparent text-neutral-500 hover:text-neutral-300'
+                      }`}
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>📜 Versões ({versions.length})</span>
+                    </button>
                   </div>
 
-                  {/* ACTIVE CODE CONTENT CONTAINER */}
-                  <div className="flex-1 overflow-y-auto p-4 bg-neutral-900/40 font-mono text-xs relative">
-                    {selectedFile && activeScript.files[selectedFile] ? (
-                      <>
-                        {/* COPY FLOATING BUTTON */}
-                        <div className="absolute right-4 top-4 z-10 flex gap-2">
-                          <button
-                            onClick={() => handleCopyCode(selectedFile, activeScript.files[selectedFile])}
-                            className="p-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded transition flex items-center gap-1 text-[10px]"
-                          >
-                            {copiedFile === selectedFile ? (
-                              <>
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                                <span className="text-emerald-400">Copiador!</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                <span>Copiar</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-
-                        {/* RENDER CODE TEXT */}
-                        <pre className="text-emerald-400/90 whitespace-pre leading-relaxed select-text pr-12 pb-16 font-mono text-[11px]">
-                          <code>{activeScript.files[selectedFile]}</code>
-                        </pre>
-                      </>
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-neutral-500 italic text-[11px]">
-                        Nenhum arquivo ativo selecionado.
+                  {codeSubTab === 'source' ? (
+                    <>
+                      {/* FILE SELECTOR TABS */}
+                      <div className="flex border-b border-neutral-900/60 bg-neutral-950/40 overflow-x-auto text-[10px] font-mono select-none">
+                        {Object.keys(activeScript.files).map(filename => {
+                          const isModified = activeScript.last_change_summary?.toLowerCase().includes(filename.toLowerCase());
+                          return (
+                            <button
+                              key={filename}
+                              onClick={() => setSelectedFile(filename)}
+                              className={`px-3.5 py-2.5 border-r border-neutral-900/60 transition-all flex items-center gap-1.5 shrink-0 ${
+                                selectedFile === filename 
+                                  ? 'bg-neutral-900 text-red-400 border-b-2 border-b-red-700 font-bold' 
+                                  : 'text-neutral-500 hover:text-neutral-300 bg-neutral-950'
+                              }`}
+                            >
+                              <span>{filename}</span>
+                              {isModified && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" title="Modificado recentemente" />
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
-                    )}
-                  </div>
 
-                  {/* SCRIPT ACCORDION EXPANSION (WARNINGS & DEPENDENCIES) */}
-                  <div className="p-3 bg-neutral-950 border-t border-red-950/20 text-[10px] font-mono flex flex-col gap-2">
-                    <div className="flex items-center gap-1.5 text-amber-500 font-semibold mb-1">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Avisos Técnicos de Instalação:
-                    </div>
-                    {activeScript.warnings && activeScript.warnings.length > 0 ? (
-                      activeScript.warnings.map((warn, wIdx) => (
-                        <div key={wIdx} className="text-neutral-500 pl-3 border-l border-amber-900/50">
-                          • {warn}
+                      {/* ACTIVE CODE CONTENT CONTAINER */}
+                      <div className="flex-1 overflow-y-auto p-4 bg-neutral-900/40 font-mono text-xs relative">
+                        {selectedFile && activeScript.files[selectedFile] ? (
+                          <>
+                            {/* COPY FLOATING BUTTON */}
+                            <div className="absolute right-4 top-4 z-10 flex gap-2">
+                              <button
+                                onClick={() => handleCopyCode(selectedFile, activeScript.files[selectedFile])}
+                                className="p-1.5 bg-neutral-950 hover:bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white rounded transition flex items-center gap-1 text-[10px]"
+                              >
+                                {copiedFile === selectedFile ? (
+                                  <>
+                                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-emerald-400">Copiador!</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span>Copiar</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+
+                            {/* RENDER CODE TEXT */}
+                            <pre className="text-emerald-400/90 whitespace-pre leading-relaxed select-text pr-12 pb-16 font-mono text-[11px]">
+                              <code>{activeScript.files[selectedFile]}</code>
+                            </pre>
+                          </>
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-neutral-500 italic text-[11px]">
+                            Nenhum arquivo ativo selecionado.
+                          </div>
+                        )}
+                      </div>
+
+                      {/* SCRIPT ACCORDION EXPANSION (WARNINGS & DEPENDENCIES) */}
+                      <div className="p-3 bg-neutral-950 border-t border-red-950/20 text-[10px] font-mono flex flex-col gap-2">
+                        <div className="flex items-center gap-1.5 text-amber-500 font-semibold mb-1">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Avisos Técnicos de Instalação:
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-neutral-500 italic pl-3">Nenhum aviso emitido para este script.</div>
-                    )}
-                    
-                    <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-neutral-900/80 items-center">
-                      <span className="text-neutral-500 font-bold uppercase text-[9px] tracking-wider">Dependências:</span>
-                      {activeScript.dependencies.map(dep => (
-                        <span key={dep} className="px-1.5 py-0.5 bg-red-950/40 text-red-500 border border-red-900/30 rounded text-[9px] font-bold">
-                          {dep}
-                        </span>
-                      ))}
+                        {activeScript.warnings && activeScript.warnings.length > 0 ? (
+                          activeScript.warnings.map((warn, wIdx) => (
+                            <div key={wIdx} className="text-neutral-500 pl-3 border-l border-amber-900/50">
+                              • {warn}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-neutral-500 italic pl-3">Nenhum aviso emitido para este script.</div>
+                        )}
+                        
+                        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-neutral-900/80 items-center">
+                          <span className="text-neutral-500 font-bold uppercase text-[9px] tracking-wider">Dependências:</span>
+                          {activeScript.dependencies.map(dep => (
+                            <span key={dep} className="px-1.5 py-0.5 bg-red-950/40 text-red-500 border border-red-900/30 rounded text-[9px] font-bold">
+                              {dep}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto p-4 bg-neutral-950 flex flex-col gap-3">
+                      <div className="text-xs font-mono text-neutral-400 mb-1 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                        <History className="w-3.5 h-3.5 text-red-500" /> Histórico Evolutivo
+                      </div>
+                      
+                      {versions.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-12 text-center text-neutral-500 gap-2">
+                          <GitCommit className="w-6 h-6 text-neutral-700 animate-pulse" />
+                          <span className="text-[10px] font-mono">Nenhuma versão listada...</span>
+                        </div>
+                      ) : (
+                        versions.map(v => {
+                          const isCurrent = v.id === activeScript.current_version_id || v.version_number === activeScript.version_count;
+                          return (
+                            <div 
+                              key={v.id} 
+                              className={`p-3 rounded-lg border text-xs font-sans flex flex-col gap-2 transition-all ${
+                                isCurrent 
+                                  ? 'bg-red-950/15 border-red-900/40 text-neutral-100 shadow-lg' 
+                                  : 'bg-neutral-900/40 border-neutral-800/80 text-neutral-300 hover:border-neutral-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-bold text-red-400 text-xs">Versão v{v.version_number}</span>
+                                  {isCurrent && (
+                                    <span className="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-900/45 text-[8px] font-mono font-bold uppercase">
+                                      ativa
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="font-mono text-[9px] text-neutral-500">
+                                  {v.created_at ? new Date(v.created_at).toLocaleString('pt-BR') : ''}
+                                </span>
+                              </div>
+
+                              {v.user_request && (
+                                <div className="bg-neutral-950/60 p-2 rounded text-[10px] border border-neutral-900">
+                                  <span className="text-neutral-500 block font-mono text-[8px] uppercase font-bold tracking-wider mb-0.5">Solicitação do Usuário:</span>
+                                  <p className="line-clamp-2 text-neutral-300 italic">"{v.user_request}"</p>
+                                </div>
+                              )}
+
+                              <div>
+                                <span className="text-neutral-500 font-mono text-[8px] uppercase font-bold tracking-wider block mb-0.5">Resumo das Alterações:</span>
+                                <p className="text-neutral-200 leading-relaxed text-[11px]">{v.change_summary || "Melhoria incremental do script RedM."}</p>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2 mt-1 pt-2 border-t border-neutral-900">
+                                <span className="text-[9px] font-mono text-neutral-500 uppercase">
+                                  {Object.keys(v.files).length} arquivos
+                                </span>
+                                
+                                {!isCurrent && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreVersion(v.id)}
+                                    disabled={isRestoring}
+                                    className="px-2 py-0.5 bg-red-950 hover:bg-red-900 disabled:opacity-40 text-red-400 hover:text-red-200 border border-red-800/30 rounded text-[10px] font-mono transition-colors flex items-center gap-1"
+                                  >
+                                    <RefreshCw className={`w-3 h-3 ${isRestoring ? 'animate-spin' : ''}`} />
+                                    <span>Restaurar esta versão</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
-                  </div>
+                  )}
                 </>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center gap-2">

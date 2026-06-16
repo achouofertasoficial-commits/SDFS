@@ -96,16 +96,26 @@ export default function ScriptsView({ currentTab }: ScriptsViewProps) {
                     <span className="font-sans font-bold text-sm text-neutral-100 truncate">
                       {script.title}
                     </span>
-                    <span className="shrink-0 text-[9px] font-mono font-bold bg-neutral-800 text-neutral-400 px-1.5 py-0.5 border border-neutral-700/60 rounded">
+                    <span className="shrink-0 text-[9px] font-mono font-bold bg-neutral-800 text-neutral-300 px-1.5 py-0.5 border border-neutral-700/60 rounded">
                       {filesCount} {filesCount === 1 ? 'arquivo' : 'arquivos'}
                     </span>
                   </div>
 
-                  <p className="text-neutral-400 text-xs line-clamp-2 leading-relaxed mb-3 font-sans">
+                  <p className="text-neutral-400 text-xs line-clamp-2 leading-relaxed mb-2 font-sans">
                     {script.description}
                   </p>
 
-                  <div className="flex flex-wrap gap-1.5 mb-3.5">
+                  {script.last_change_summary && (
+                    <div className="mb-2.5 text-[10px] text-neutral-450 font-sans border-l-2 border-red-900 pl-2 py-0.5 bg-red-950/20 rounded">
+                      <span className="text-red-500 font-mono text-[9px] uppercase font-bold mr-1 block">Alteração Recente:</span>
+                      <p className="line-clamp-2 italic text-neutral-400">"{script.last_change_summary}"</p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-1.5 mb-3.5 items-center">
+                    <span className="px-1.5 py-0.5 rounded bg-red-950/40 text-red-400 border border-red-900/30 text-[8px] font-mono uppercase font-bold">
+                      {script.version_count || 1} {(script.version_count || 1) === 1 ? 'versão' : 'versões'}
+                    </span>
                     {script.dependencies && script.dependencies.map(dep => (
                       <span key={dep} className="text-[8px] font-mono bg-neutral-950 border border-neutral-900/60 text-neutral-500 px-1.5 py-0.5 rounded uppercase tracking-wider font-semibold">
                         {dep}
@@ -115,7 +125,7 @@ export default function ScriptsView({ currentTab }: ScriptsViewProps) {
 
                   <div className="flex items-center justify-between text-[10px] font-mono text-neutral-500 border-t border-neutral-900/40 pt-2.5">
                     <span>
-                      {script.created_at ? new Date(script.created_at).toLocaleDateString() : ''}
+                      Modificado: {script.updated_at ? new Date(script.updated_at).toLocaleDateString('pt-BR') : script.created_at ? new Date(script.created_at).toLocaleDateString('pt-BR') : ''}
                     </span>
                     <span className="text-red-500 font-semibold flex items-center gap-1 hover:text-red-400 transition-colors">
                       Visualizar Arquivos →

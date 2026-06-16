@@ -21,7 +21,11 @@ import {
   getSupabaseConfig, 
   updateSupabaseConfig,
   getSupabaseError,
-  getSupabaseStatus
+  getSupabaseStatus,
+  getChatWithMessages,
+  getCurrentScriptByChat,
+  getScriptVersions,
+  rollbackScriptVersion
 } from "./server/db";
 
 import { generateScriptWithGemini, getGeminiError } from "./server/ragService";
@@ -308,10 +312,17 @@ async function startServer() {
         content: content
       });
 
-      // b. Processa o pipeline RAG com a Gemini API no backend
-      const responseG = await generateScriptWithGemini(content, chatId);
+      // b. Para o MODO PROJETO VIVO:
+      // - Buscamos o histórico completo do chat
+      const history = await getChatMessages(chatId);
+      
+      // - Buscamos o script atual ativo se houver
+      const currentScript = await getCurrentScriptByChat(chatId);
 
-      // c. Salva a resposta da IA no banco
+      // c. Processa o pipeline RAG com a Gemini API no backend passando o histórico e o script atual
+      const responseG = await generateScriptWithGemini(content, chatId, history, currentScript);
+
+      // d. Salva a resposta da IA no banco
       const modelMsg = await addChatMessage({
         chat_id: chatId,
         role: 'model',
@@ -327,9 +338,79 @@ async function startServer() {
       });
 
     } catch (err: any) {
+      console.error("Erro na rota de envio de mensagem:", err);
       res.status(500).json({ error: err.message });
     }
   });
+
+  // Alias para garantir máxima compatibilidade com as requisições do frontend
+  app.post("/api/chat/:id/message", async (req, res) => {
+    try {
+      const chatId = req.params.id;
+      const { content } = req.body;
+
+      if (!content || content.trim() === '') {
+        return res.status(400).json({ error: "O conteúdo da mensagem não pode estar vazio" });
+      }
+
+      const userMsg = await addChatMessage({
+        chat_id: chatId,
+        role: 'user',
+        content: content
+      });
+
+      const history = await getChatMessages(chatId);
+      const currentScript = await getCurrentScriptByChat(chatId);
+      const responseG = await generateScriptWithGemini(content, chatId, history, currentScript);
+
+      const modelMsg = await addChatMessage({
+        chat_id: chatId,
+        role: 'model',
+        content: responseG.content,
+        retrieved_context: responseG.retrievedContext
+      });
+
+      res.status(200).json({
+        userMessage: userMsg,
+        modelMessage: modelMsg,
+        hasScript: responseG.hasScript,
+        scriptDetail: responseG.scriptDetail
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Retorna todas as versões de um script específico
+  app.get("/api/scripts/:scriptId/versions", async (req, res) => {
+    try {
+      const { scriptId } = req.params;
+      const versions = await getScriptVersions(scriptId);
+      res.json(versions);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Executa o restore/rollback de uma versão anterior gravando como uma nova versão corrente
+  app.post("/api/scripts/:scriptId/rollback/:versionId", async (req, res) => {
+    try {
+      const { scriptId, versionId } = req.params;
+      const rolledBackVersion = await rollbackScriptVersion(scriptId, versionId);
+      if (rolledBackVersion) {
+        res.json({
+          success: true,
+          message: "Versão restaurada com sucesso como nova versão atual.",
+          version: rolledBackVersion
+        });
+      } else {
+        res.status(404).json({ error: "Versão ou Script não encontrados para rollback." });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
 
   // 6. API: Generated Scripts List
   app.get("/api/scripts", async (req, res) => {

@@ -40,8 +40,29 @@ export interface GeneratedScript {
   install_steps: string[];
   warnings: string[];
   generated_by?: 'gemini' | 'mock' | 'manual';
+  current_version_id?: string | null;
+  version_count?: number;
+  last_user_request?: string;
+  last_change_summary?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ScriptVersion {
+  id: string;
+  script_id: string;
+  chat_id: string;
+  version_number: number;
+  change_summary: string;
+  user_request: string;
+  files: Record<string, string>;
+  dependencies: string[];
+  install_steps: string[];
+  warnings: string[];
+  generated_by: string;
   created_at?: string;
 }
+
 
 export interface DatabaseMetadata {
   totalDocs: number;

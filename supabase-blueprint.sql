@@ -68,6 +68,10 @@ CREATE TABLE IF NOT EXISTS generated_scripts (
     install_steps TEXT[] DEFAULT '{}',
     warnings TEXT[] DEFAULT '{}',
     generated_by TEXT NOT NULL DEFAULT 'gemini' CHECK (generated_by IN ('gemini', 'mock', 'manual')),
+    current_version_id UUID, -- References script_versions(id) added dynamically
+    version_count INTEGER DEFAULT 1,
+    last_user_request TEXT,
+    last_change_summary TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -76,6 +80,35 @@ CREATE TABLE IF NOT EXISTS generated_scripts (
 CREATE INDEX IF NOT EXISTS idx_scripts_chat_id ON generated_scripts(chat_id);
 CREATE INDEX IF NOT EXISTS idx_scripts_generated_by ON generated_scripts(generated_by);
 CREATE INDEX IF NOT EXISTS idx_scripts_created_at ON generated_scripts(created_at);
+CREATE INDEX IF NOT EXISTS idx_scripts_current_version_id ON generated_scripts(current_version_id);
+
+-- 4b. Table: script_versions (PROJETO VIVO)
+CREATE TABLE IF NOT EXISTS script_versions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    script_id UUID REFERENCES generated_scripts(id) ON DELETE CASCADE,
+    chat_id UUID REFERENCES ai_chats(id) ON DELETE CASCADE,
+    version_number INTEGER NOT NULL,
+    change_summary TEXT,
+    user_request TEXT,
+    files JSONB NOT NULL DEFAULT '{}'::jsonb,
+    dependencies TEXT[] DEFAULT '{}',
+    install_steps TEXT[] DEFAULT '{}',
+    warnings TEXT[] DEFAULT '{}',
+    generated_by TEXT NOT NULL DEFAULT 'gemini',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Indices for script_versions optimization
+CREATE INDEX IF NOT EXISTS idx_script_versions_script_id ON script_versions(script_id);
+CREATE INDEX IF NOT EXISTS idx_script_versions_chat_id ON script_versions(chat_id);
+CREATE INDEX IF NOT EXISTS idx_script_versions_version_number ON script_versions(version_number);
+
+-- Safe idempotent column migrations for existing instances
+ALTER TABLE generated_scripts ADD COLUMN IF NOT EXISTS current_version_id UUID;
+ALTER TABLE generated_scripts ADD COLUMN IF NOT EXISTS version_count INTEGER DEFAULT 1;
+ALTER TABLE generated_scripts ADD COLUMN IF NOT EXISTS last_user_request TEXT;
+ALTER TABLE generated_scripts ADD COLUMN IF NOT EXISTS last_change_summary TEXT;
+
 
 -- 5. Table: app_configurations
 CREATE TABLE IF NOT EXISTS app_configurations (

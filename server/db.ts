@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { KnowledgeDocument, AIChat, AIMessage, GeneratedScript } from '../src/types';
+import { KnowledgeDocument, AIChat, AIMessage, GeneratedScript, ScriptVersion } from '../src/types';
 import { initialKnowledgeBase, mockGeneratedScriptsList } from '../src/seedData';
 
 // Dynamic server-side configuration variables
@@ -33,7 +33,8 @@ const localStore = {
     { id: "chat-sample-1", title: "Mineração de Ouro RSG Core", created_at: new Date().toISOString() }
   ] as AIChat[],
   messages: [] as AIMessage[],
-  scripts: [...mockGeneratedScriptsList] as GeneratedScript[]
+  scripts: [...mockGeneratedScriptsList] as GeneratedScript[],
+  versions: [] as ScriptVersion[]
 };
 
 export function updateSupabaseConfig(url: string, key: string) {
@@ -450,3 +451,254 @@ export async function saveGeneratedScript(script: Omit<GeneratedScript, 'id' | '
   localStore.scripts.unshift(newScript);
   return newScript;
 }
+
+// 5. PROJETO VIVO & VERSION CONTROL CONTROLLERS
+export async function getChatWithMessages(chatId: string): Promise<{ chat: AIChat; messages: AIMessage[] } | null> {
+  let chat: AIChat | null = null;
+  let messages: AIMessage[] = [];
+
+  if (supabase) {
+    try {
+      const { data: chatData, error: chatError } = await supabase
+        .from('ai_chats')
+        .select('*')
+        .eq('id', chatId)
+        .single();
+      if (!chatError && chatData) {
+        chat = chatData as AIChat;
+        const { data: msgData, error: msgError } = await supabase
+          .from('ai_messages')
+          .select('*')
+          .eq('chat_id', chatId)
+          .order('created_at', { ascending: true });
+        if (!msgError && msgData) {
+          messages = msgData as AIMessage[];
+        }
+        return { chat, messages };
+      }
+    } catch (err) {
+      console.error('Exception in getChatWithMessages from Supabase:', err);
+    }
+  }
+
+  // Fallback
+  const localChat = localStore.chats.find(c => c.id === chatId);
+  if (localChat) {
+    const localMsgs = localStore.messages.filter(m => m.chat_id === chatId);
+    return { chat: localChat, messages: localMsgs };
+  }
+  return null;
+}
+
+export async function getCurrentScriptByChat(chatId: string): Promise<GeneratedScript | null> {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('generated_scripts')
+        .select('*')
+        .eq('chat_id', chatId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      if (!error && data && data.length > 0) {
+        return data[0] as GeneratedScript;
+      }
+    } catch (err) {
+      console.error('Exception in getCurrentScriptByChat from Supabase:', err);
+    }
+  }
+  const local = localStore.scripts.filter(s => s.chat_id === chatId);
+  if (local.length > 0) {
+    const sorted = [...local].sort((a, b) => {
+      const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+      const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+      return timeB - timeA;
+    });
+    return sorted[0];
+  }
+  return null;
+}
+
+export async function createScriptVersion(
+  scriptId: string, 
+  chatId: string, 
+  versionData: Omit<ScriptVersion, 'id' | 'script_id' | 'chat_id' | 'created_at'>
+): Promise<ScriptVersion> {
+  let nextVersionNumber = versionData.version_number;
+  
+  if (!nextVersionNumber) {
+    // calculate dynamically
+    const existing = await getScriptVersions(scriptId);
+    nextVersionNumber = existing.length > 0 ? Math.max(...existing.map(v => v.version_number)) + 1 : 1;
+  }
+
+  const newVersion: ScriptVersion = {
+    id: generateUUID(),
+    script_id: scriptId,
+    chat_id: chatId,
+    version_number: nextVersionNumber,
+    change_summary: versionData.change_summary || '',
+    user_request: versionData.user_request || '',
+    files: versionData.files,
+    dependencies: versionData.dependencies || [],
+    install_steps: versionData.install_steps || [],
+    warnings: versionData.warnings || [],
+    generated_by: versionData.generated_by || 'gemini',
+    created_at: new Date().toISOString()
+  };
+
+  if (supabase) {
+    try {
+      const { error: vError } = await supabase
+        .from('script_versions')
+        .insert([newVersion]);
+        
+      if (!vError) {
+        await supabase
+          .from('generated_scripts')
+          .update({
+            files: newVersion.files,
+            current_version_id: newVersion.id,
+            version_count: nextVersionNumber,
+            last_user_request: newVersion.user_request,
+            last_change_summary: newVersion.change_summary,
+            warnings: newVersion.warnings,
+            dependencies: newVersion.dependencies,
+            install_steps: newVersion.install_steps,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', scriptId);
+
+        return newVersion;
+      }
+      console.warn('Supabase createScriptVersion execution error, falling back:', vError);
+    } catch (err) {
+      console.error('Exception inserting version in Supabase:', err);
+    }
+  }
+
+  // Fallback locally
+  localStore.versions.push(newVersion);
+  
+  const scriptIdx = localStore.scripts.findIndex(s => s.id === scriptId);
+  if (scriptIdx !== -1) {
+    localStore.scripts[scriptIdx] = {
+      ...localStore.scripts[scriptIdx],
+      files: newVersion.files,
+      current_version_id: newVersion.id,
+      version_count: nextVersionNumber,
+      last_user_request: newVersion.user_request,
+      last_change_summary: newVersion.change_summary,
+      dependencies: newVersion.dependencies,
+      install_steps: newVersion.install_steps,
+      warnings: newVersion.warnings,
+      updated_at: new Date().toISOString()
+    };
+  }
+  
+  return newVersion;
+}
+
+export async function updateCurrentScriptVersion(
+  scriptId: string, 
+  versionId: string, 
+  files: Record<string, string>, 
+  summary: string
+): Promise<void> {
+  if (supabase) {
+    try {
+      await supabase
+        .from('script_versions')
+        .update({ files, change_summary: summary })
+        .eq('id', versionId);
+
+      await supabase
+        .from('generated_scripts')
+        .update({ 
+          files, 
+          last_change_summary: summary,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', scriptId);
+      return;
+    } catch (err) {
+      console.error('Exception updating script version in Supabase:', err);
+    }
+  }
+
+  // Local updates
+  const vIdx = localStore.versions.findIndex(v => v.id === versionId);
+  if (vIdx !== -1) {
+    localStore.versions[vIdx].files = files;
+    localStore.versions[vIdx].change_summary = summary;
+  }
+  const scriptIdx = localStore.scripts.findIndex(s => s.id === scriptId);
+  if (scriptIdx !== -1) {
+    localStore.scripts[scriptIdx].files = files;
+    localStore.scripts[scriptIdx].last_change_summary = summary;
+    localStore.scripts[scriptIdx].updated_at = new Date().toISOString();
+  }
+}
+
+export async function getScriptVersions(scriptId: string): Promise<ScriptVersion[]> {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('script_versions')
+        .select('*')
+        .eq('script_id', scriptId)
+        .order('version_number', { ascending: false });
+      if (!error && data) return data as ScriptVersion[];
+      console.warn('Supabase getScriptVersions error, loading locally:', error);
+    } catch (err) {
+      console.error('Exception fetching versions from Supabase:', err);
+    }
+  }
+  return localStore.versions
+    .filter(v => v.script_id === scriptId)
+    .sort((a, b) => b.version_number - a.version_number);
+}
+
+export async function rollbackScriptVersion(scriptId: string, versionId: string): Promise<ScriptVersion | null> {
+  let selectedVersion: ScriptVersion | null = null;
+  
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('script_versions')
+        .select('*')
+        .eq('id', versionId)
+        .single();
+      if (!error && data) {
+        selectedVersion = data as ScriptVersion;
+      }
+    } catch (err) {
+      console.error('Exception fetching specific rollback version in Supabase:', err);
+    }
+  }
+  
+  if (!selectedVersion) {
+    selectedVersion = localStore.versions.find(v => v.id === versionId) || null;
+  }
+  
+  if (!selectedVersion) {
+    return null;
+  }
+  
+  const existingVersions = await getScriptVersions(scriptId);
+  const maxNum = existingVersions.length > 0 ? Math.max(...existingVersions.map(v => v.version_number)) : 1;
+  const nextNum = maxNum + 1;
+  
+  const rolledBackVersion = await createScriptVersion(scriptId, selectedVersion.chat_id, {
+    version_number: nextNum,
+    change_summary: `Restauração automática para o estado da Versão v${selectedVersion.version_number}`,
+    user_request: `Reversão/Rollback para v${selectedVersion.version_number}`,
+    files: selectedVersion.files,
+    dependencies: selectedVersion.dependencies || [],
+    install_steps: selectedVersion.install_steps || [],
+    warnings: selectedVersion.warnings || [],
+    generated_by: selectedVersion.generated_by
+  });
+  
+  return rolledBackVersion;
+}
+
