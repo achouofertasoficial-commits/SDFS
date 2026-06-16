@@ -19,10 +19,11 @@ import {
   getGeneratedScripts, 
   isSupabaseConnected, 
   getSupabaseConfig, 
-  updateSupabaseConfig 
+  updateSupabaseConfig,
+  getSupabaseError
 } from "./server/db";
 
-import { generateScriptWithGemini } from "./server/ragService";
+import { generateScriptWithGemini, getGeminiError } from "./server/ragService";
 
 async function startServer() {
   const app = express();
@@ -51,7 +52,9 @@ async function startServer() {
       res.json({
         supabaseConnected: isSupabaseConnected(),
         supabaseUrl: getSupabaseConfig().url ? `${getSupabaseConfig().url.substring(0, 15)}...` : null,
+        supabaseError: getSupabaseError(),
         geminiConfigured: !!process.env.GEMINI_API_KEY,
+        geminiError: getGeminiError(),
         stats,
         scriptsCount: scripts.length
       });

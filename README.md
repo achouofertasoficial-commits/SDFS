@@ -10,6 +10,8 @@ RSG Script Forge AI é um ecossistema inteligente de alta performance projetado 
 * **Frontend SPA Layout**: React 19 + Vite + Tailwind CSS v4 para interfaces limpas e de alto contraste.
 * **Inteligência Artificial (IA)**: `@google/genai` v2 (SDK Moderno da Google para inferência server-side com cache contextual e resposta estruturada em JSON).
 * **Banco de Dados & RAG**: Supabase (PostgreSQL nativo com busca por texto completo, chaves estrangeiras relacionais e triggers automáticos de atualização).
+* **Gestão de Metadados (`generated_by`)**: Rastreamento profundo da origem dos códigos através das tags `gemini`, `mock`, e `manual` que são persistidas no banco e geram alertas visuais dinâmicos em tela sobre a confiabilidade do script.
+* **Modelo RAG Futuro**: O sistema está orquestrado com uma busca por similaridade textual exata e por tags. Um roadmap futuro prevê a extensão usando `pgvector` no PostgreSQL para embeddings semânticos densos conforme a base de dados escalar.
 
 ---
 

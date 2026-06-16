@@ -7,6 +7,11 @@ let supabaseUrl = process.env.SUPABASE_URL || '';
 let supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
 
 let supabase: SupabaseClient | null = null;
+let supabaseError: string | null = null;
+
+export function getSupabaseError(): string | null {
+  return supabaseError;
+}
 
 // Local in-memory store for fallback/graceful execution
 const localStore = {
@@ -24,15 +29,18 @@ export function updateSupabaseConfig(url: string, key: string) {
   if (url && key) {
     try {
       supabase = createClient(url, key);
+      supabaseError = null;
       console.log('Supabase client successfully updated.');
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error initializing Supabase client:', err);
       supabase = null;
+      supabaseError = err.message || "Erro de inicialização do cliente Supabase";
       return false;
     }
   } else {
     supabase = null;
+    supabaseError = null;
     return false;
   }
 }
@@ -80,9 +88,16 @@ export async function getDocuments(): Promise<KnowledgeDocument[]> {
         .from('knowledge_documents')
         .select('*')
         .order('created_at', { ascending: false });
-      if (!error && data) return data as KnowledgeDocument[];
-      console.warn('Supabase getDocuments error, falling back to local store:', error);
-    } catch (err) {
+      if (!error && data) {
+        supabaseError = null;
+        return data as KnowledgeDocument[];
+      }
+      if (error) {
+        supabaseError = error.message;
+        console.warn('Supabase getDocuments error, falling back to local store:', error);
+      }
+    } catch (err: any) {
+      supabaseError = err?.message || "Exceção ao ler do Supabase";
       console.error('Exception fetching documents from Supabase:', err);
     }
   }

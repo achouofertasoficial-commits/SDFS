@@ -4,10 +4,16 @@ import { KnowledgeDocument, GeneratedScript } from "../src/types";
 
 // Lazy-initialization of GoogleGenAI
 let aiInstance: GoogleGenAI | null = null;
+let geminiError: string | null = null;
+
+export function getGeminiError(): string | null {
+  return geminiError;
+}
 
 function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
+    geminiError = "GEMINI_API_KEY não configurada no ambiente.";
     throw new Error("GEMINI_API_KEY não configurada no ambiente. Configure em Configurações.");
   }
   
@@ -146,6 +152,7 @@ Você deve responder rigorosamente no formato JSON especificado.`;
     if (!bodyText) throw new Error("O modelo gerou uma resposta vazia.");
     
     const parsed = JSON.parse(bodyText.trim());
+    geminiError = null;
     
     let savedScript: GeneratedScript | null = null;
     if (parsed.hasScript && parsed.scriptDetail) {
@@ -180,11 +187,34 @@ Você deve responder rigorosamente no formato JSON especificado.`;
 
   } catch (error: any) {
     console.error("Erro na chamada da Gemini API / RAG Service:", error);
+    geminiError = error?.message || "Erro desconhecido na chamada Gemini";
     
     // Gerador de script fallback inteligente para dar uma experiência fantástica mesmo na ausência de chaves
     const isMock = userRequest.toLowerCase().includes("mineração") || userRequest.toLowerCase().includes("gold") || userRequest.toLowerCase().includes("ouro") || userRequest.toLowerCase().includes("bounty") || userRequest.toLowerCase().includes("procurado");
     
     if (isMock) {
+      // Salva o script mock gerado vinculando ao chatId para persistência local ou Supabase
+      await saveGeneratedScript({
+        chat_id: chatId,
+        title: "rsg-mockmine",
+        description: "Protótipo simulado localmente de Recurso utilizando RSG Framework",
+        framework: "RSG",
+        files: {
+          "fxmanifest.lua": `fx_version 'cerulean'\ngames { 'rdr3' }\nrdr3_warning 'Icknowwhatimdoing'\nauthor 'RSG Script Forge AI Fallback'\nshared_scripts { 'config.lua' }\nclient_scripts { 'client.lua' }\nserver_scripts { 'server.lua' }`,
+          "config.lua": `Config = {}\nConfig.Location = vector3(-1189.2, -452.9, 45.1)\nConfig.MineTime = 4000\nConfig.Item = "gold_ore"`,
+          "client.lua": `-- Script de Client Simulado\nlocal RSGCore = exports['rsg-core']:GetCoreObject()\n-- Executa o prompt nativo...\nRegisterCommand('testmine', function()\n    TriggerServerEvent('rsg-goldmine:server:reward')\nend, false)`,
+          "server.lua": `-- Script de Server Seguro\nlocal RSGCore = exports['rsg-core']:GetCoreObject()\nRegisterNetEvent('rsg-goldmine:server:reward', function()\n    local src = source\n    local Player = RSGCore.Functions.GetPlayer(src)\n    if Player then\n        Player.Functions.AddItem("gold_ore", 1)\n        TriggerClientEvent('RSGCore:Notify', src, "Minerou 1x Ouro (MOCK)", "success")\n    end\nend)`
+        },
+        dependencies: ["rsg-core"],
+        install_steps: [
+          "Ative sua chave Gemini no painel de configurações para obter códigos reais complexos",
+          "Insira rsg-mockmine na pasta resources",
+          "Inicie no seu server.cfg: ensure rsg-mockmine"
+        ],
+        warnings: ["Este é um script de simulação local (Modo Demonstração) devido à ausência de chave API."],
+        generated_by: 'mock'
+      });
+
       // Retorna uma simulação realista se o usuário estiver brincando com o exemplo padrão
       return {
         content: `⚠️ [AMB-LOCAL / SEM CHAVE GEMINI] Notei que pediu um script técnico. Como a chave GEMINI_API_KEY não foi configurada, estou gerando uma solução modelo estruturada a partir da base de conhecimento de fallback. 

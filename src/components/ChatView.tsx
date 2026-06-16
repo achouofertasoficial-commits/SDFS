@@ -401,6 +401,17 @@ export default function ChatView({ currentTab }: ChatViewProps) {
                 </button>
               </div>
 
+              {/* WARNING BOX FOR SIMULATED SCRIPT */}
+              {activeScript.generated_by === 'mock' && (
+                <div className="bg-yellow-950/30 border-b border-yellow-900/40 p-3.5 mx-4 mt-3 rounded-lg flex items-start gap-2.5 text-yellow-500 text-[11px] leading-relaxed font-sans shadow-md">
+                  <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-yellow-400 font-bold uppercase block mb-1">Aviso de Simulação</strong>
+                    Este script foi gerado em modo simulado. Não representa resposta real da IA. Configure sua chave Gemini nas Configurações do app.
+                  </div>
+                </div>
+              )}
+
               {scriptExpanded ? (
                 <>
                   {/* FILE SELECTOR TABS */}

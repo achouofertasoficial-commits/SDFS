@@ -11,7 +11,9 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [status, setStatus] = useState({
     supabaseConnected: false,
+    supabaseError: null as string | null,
     geminiConfigured: false,
+    geminiError: null as string | null,
     scriptsCount: 0,
     stats: {
       totalDocs: 0,
@@ -28,7 +30,9 @@ export default function App() {
         const data = await res.json();
         setStatus({
           supabaseConnected: data.supabaseConnected,
+          supabaseError: data.supabaseError || null,
           geminiConfigured: data.geminiConfigured,
+          geminiError: data.geminiError || null,
           scriptsCount: data.scriptsCount,
           stats: data.stats
         });
@@ -64,7 +68,9 @@ export default function App() {
             <DashboardView
               stats={status.stats}
               supabaseConnected={status.supabaseConnected}
+              supabaseError={status.supabaseError}
               geminiConfigured={status.geminiConfigured}
+              geminiError={status.geminiError}
               scriptsCount={status.scriptsCount}
               onNavigate={(tab) => setCurrentTab(tab)}
             />

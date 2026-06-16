@@ -29,13 +29,18 @@ CREATE INDEX IF NOT EXISTS idx_kb_category ON knowledge_documents(category);
 CREATE INDEX IF NOT EXISTS idx_kb_content_type ON knowledge_documents(content_type);
 CREATE INDEX IF NOT EXISTS idx_kb_framework ON knowledge_documents(framework);
 CREATE INDEX IF NOT EXISTS idx_kb_tags ON knowledge_documents USING gin(tags);
+CREATE INDEX IF NOT EXISTS idx_kb_created_at ON knowledge_documents(created_at);
 
 -- 2. Table: ai_chats
 CREATE TABLE IF NOT EXISTS ai_chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT DEFAULT 'Novo Script Chat',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Index for chat active ordering
+CREATE INDEX IF NOT EXISTS idx_chats_created_at ON ai_chats(created_at);
 
 -- 3. Table: ai_messages
 CREATE TABLE IF NOT EXISTS ai_messages (
@@ -46,6 +51,10 @@ CREATE TABLE IF NOT EXISTS ai_messages (
     retrieved_context JSONB DEFAULT '[]'::jsonb, -- Array of source reference docs used
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Index for sequence scanning
+CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON ai_messages(chat_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON ai_messages(created_at);
 
 -- 4. Table: generated_scripts
 CREATE TABLE IF NOT EXISTS generated_scripts (
@@ -59,12 +68,14 @@ CREATE TABLE IF NOT EXISTS generated_scripts (
     install_steps TEXT[] DEFAULT '{}',
     warnings TEXT[] DEFAULT '{}',
     generated_by TEXT NOT NULL DEFAULT 'gemini' CHECK (generated_by IN ('gemini', 'mock', 'manual')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Indices for script relationship tracking
+-- Indices for script relationship tracking and sorting
 CREATE INDEX IF NOT EXISTS idx_scripts_chat_id ON generated_scripts(chat_id);
 CREATE INDEX IF NOT EXISTS idx_scripts_generated_by ON generated_scripts(generated_by);
+CREATE INDEX IF NOT EXISTS idx_scripts_created_at ON generated_scripts(created_at);
 
 -- 5. Table: app_configurations
 CREATE TABLE IF NOT EXISTS app_configurations (
@@ -73,8 +84,8 @@ CREATE TABLE IF NOT EXISTS app_configurations (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Automatic updated_at Function
-CREATE OR REPLACE FUNCTION update_modified_column()
+-- Automatic updated_at Trigger Function
+CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -87,7 +98,28 @@ DROP TRIGGER IF EXISTS trigger_update_kb_time ON knowledge_documents;
 CREATE TRIGGER trigger_update_kb_time
     BEFORE UPDATE ON knowledge_documents
     FOR EACH ROW
-    EXECUTE FUNCTION update_modified_column();
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for ai_chats
+DROP TRIGGER IF EXISTS trigger_update_chats_time ON ai_chats;
+CREATE TRIGGER trigger_update_chats_time
+    BEFORE UPDATE ON ai_chats
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for generated_scripts
+DROP TRIGGER IF EXISTS trigger_update_scripts_time ON generated_scripts;
+CREATE TRIGGER trigger_update_scripts_time
+    BEFORE UPDATE ON generated_scripts
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger for app_configurations
+DROP TRIGGER IF EXISTS trigger_update_configs_time ON app_configurations;
+CREATE TRIGGER trigger_update_configs_time
+    BEFORE UPDATE ON app_configurations
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 
 -- ==========================================
 -- SEED DATA - Carga Inicial Recomendada
