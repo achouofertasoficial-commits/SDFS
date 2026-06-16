@@ -297,10 +297,9 @@ async function startServer() {
   });
 
   app.post("/api/chats/:id/messages", async (req, res) => {
+    const chatId = req.params.id;
+    const { content } = req.body;
     try {
-      const chatId = req.params.id;
-      const { content } = req.body;
-
       if (!content || content.trim() === '') {
         return res.status(400).json({ error: "O conteúdo da mensagem não pode estar vazio" });
       }
@@ -339,16 +338,41 @@ async function startServer() {
 
     } catch (err: any) {
       console.error("Erro na rota de envio de mensagem:", err);
-      res.status(500).json({ error: err.message });
+      let errorText = "Não consegui interpretar a resposta da Gemini porque ela veio incompleta ou em JSON inválido. Reformule o pedido ou tente novamente.";
+      if (err.message && !err.message.includes("JSON_INVALID_OR_TRUNCATED")) {
+        errorText = `Ocorreu um erro no servidor: ${err.message}. Reformule o pedido ou tente novamente.`;
+      }
+
+      try {
+        const modelMsg = await addChatMessage({
+          chat_id: chatId,
+          role: 'model',
+          content: errorText,
+          retrieved_context: []
+        });
+
+        res.status(200).json({
+          userMessage: { id: "error-user", chat_id: chatId, role: "user", content: content || "", created_at: new Date().toISOString() },
+          modelMessage: modelMsg,
+          hasScript: false,
+          scriptDetail: null
+        });
+      } catch (saveErr) {
+        res.status(200).json({
+          userMessage: { id: "error-user", chat_id: chatId, role: "user", content: content || "", created_at: new Date().toISOString() },
+          modelMessage: { id: "error-model", chat_id: chatId, role: "model", content: errorText, created_at: new Date().toISOString() },
+          hasScript: false,
+          scriptDetail: null
+        });
+      }
     }
   });
 
   // Alias para garantir máxima compatibilidade com as requisições do frontend
   app.post("/api/chat/:id/message", async (req, res) => {
+    const chatId = req.params.id;
+    const { content } = req.body;
     try {
-      const chatId = req.params.id;
-      const { content } = req.body;
-
       if (!content || content.trim() === '') {
         return res.status(400).json({ error: "O conteúdo da mensagem não pode estar vazio" });
       }
@@ -377,7 +401,34 @@ async function startServer() {
         scriptDetail: responseG.scriptDetail
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error("Erro na rota de envio de mensagem (alias):", err);
+      let errorText = "Não consegui interpretar a resposta da Gemini porque ela veio incompleta ou em JSON inválido. Reformule o pedido ou tente novamente.";
+      if (err.message && !err.message.includes("JSON_INVALID_OR_TRUNCATED")) {
+        errorText = `Ocorreu um erro no servidor: ${err.message}. Reformule o pedido ou tente novamente.`;
+      }
+
+      try {
+        const modelMsg = await addChatMessage({
+          chat_id: chatId,
+          role: 'model',
+          content: errorText,
+          retrieved_context: []
+        });
+
+        res.status(200).json({
+          userMessage: { id: "error-user", chat_id: chatId, role: "user", content: content || "", created_at: new Date().toISOString() },
+          modelMessage: modelMsg,
+          hasScript: false,
+          scriptDetail: null
+        });
+      } catch (saveErr) {
+        res.status(200).json({
+          userMessage: { id: "error-user", chat_id: chatId, role: "user", content: content || "", created_at: new Date().toISOString() },
+          modelMessage: { id: "error-model", chat_id: chatId, role: "model", content: errorText, created_at: new Date().toISOString() },
+          hasScript: false,
+          scriptDetail: null
+        });
+      }
     }
   });
 

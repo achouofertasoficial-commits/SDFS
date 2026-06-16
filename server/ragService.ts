@@ -106,6 +106,84 @@ interface RAGResponse {
   };
 }
 
+export function hasTechnicalIntent(message: string): boolean {
+  const text = message.toLowerCase().trim();
+
+  // Explicit mandatory triggers requested:
+  const explicitTriggers = [
+    "criar script", "fazer script", "gerar script", "desenvolver script", "novo script",
+    "fazer sistema", "criar sistema", "desenvolver sistema", "gerar sistema", "fazer um sistema", "criar um sistema",
+    "adicionar função", "add função", "acrescentar função", "inserir função", "colocar função", "adicionar funcao", "add funcao",
+    "corrigir erro", "arrumar erro", "corrigir bug", "fix erro", "fix bug", "ajustar erro", "corrigir o erro", "consertar erro",
+    "modificar", "alterar", "tunar", "mudar", "atualizar",
+    "client.lua", "server.lua", "config.lua", "fxmanifest", "fxmanifest.lua", "shared.lua",
+    "implementar recurso", "adicionar recurso", "criar recurso", "gerar recurso",
+    "remover funcionalidade", "deletar", "apagar", "excluir",
+    "melhorar script", "otimizar", "melhorar", "evoluir script",
+    "criar resource", "fazer resource", "gerar resource"
+  ];
+
+  const generalTechnicalTerms = [
+    "script", "sistema", "função", "funcao", "recurso", "resource", "erro", "bug", "codigo", "código", "lua", "sql", "database",
+    "banco de dados", "fxmanifest", "event", "trigger", "callback", "hud", "inventario", "player", "exports", 
+    "config", "coordenadas", "barber", "barbeiro", "job", "npc", "comando", "command"
+  ];
+
+  const hasTrigger = explicitTriggers.some(trigger => text.includes(trigger));
+  const hasGeneric = generalTechnicalTerms.some(keyword => text.includes(keyword));
+
+  return hasTrigger || hasGeneric;
+}
+
+export function isConversationalOnly(message: string): boolean {
+  const text = message.toLowerCase().trim();
+
+  // Quick check for super short greeting/test terms
+  if (text.length <= 3) {
+    return true;
+  }
+
+  const conversationalKeywords = [
+    "olá", "ola", "oi", "bom dia", "boa tarde", "boa noite", "teste", "test", "tudo bem", "como vai", 
+    "obrigado", "obrigada", "valeu", "vlw", "hello", "hi", "opa", "blz", "beleza", "salve", "eai", "eae", "show", "o que você faz"
+  ];
+
+  const containsConversational = conversationalKeywords.some(kw => text.includes(kw));
+  const hasTech = hasTechnicalIntent(message);
+
+  if (containsConversational && !hasTech) {
+    return true;
+  }
+
+  if (!hasTech) {
+    return true;
+  }
+
+  return false;
+}
+
+export function safeParseGeminiJson(text: string): any {
+  if (!text) {
+    throw new Error("O modelo gerou uma resposta vazia.");
+  }
+  let cleaned = text.trim();
+  // Remove markdown fences
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(json)?/i, "");
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.replace(/```$/, "");
+  }
+  cleaned = cleaned.trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch (err: any) {
+    console.error("Erro ao realizar parse do JSON da Gemini:", err, "Texto bruto:", text);
+    throw new Error("JSON_INVALID_OR_TRUNCATED");
+  }
+}
+
 export async function generateScriptWithGemini(
   userRequest: string,
   chatId: string,
@@ -113,13 +191,27 @@ export async function generateScriptWithGemini(
   currentScript: GeneratedScript | null = null
 ): Promise<RAGResponse> {
   const docs = await searchKnowledge(userRequest);
-  
-  // Limitar a no máximo 4 documentos relevantes para poupar tokens e manter foco
   const relevantDocs = docs.slice(0, 4);
+
+  // 1. GREETINGS AND GENTLE CHAT FILTER (No Gemini API call or heavy schemas requested)
+  if (isConversationalOnly(userRequest)) {
+    return {
+      content: "Olá! Estou pronto para ajudar você a criar, corrigir ou evoluir scripts RedM/RSG. Descreva o sistema que deseja criar ou as modificações que precisa fazer no seu recurso atual.",
+      hasScript: false,
+      retrievedContext: []
+    };
+  }
+
   const promptMessage = buildPromptWithContext(userRequest, relevantDocs, history, currentScript);
   
   const systemPrompt = `Você é uma IA engenheira sênior especialista em RedM usando RSG Framework.
 Você opera no modo de PROJETO VIVO (desenvolvimento contínuo). Sua tarefa é gerar ou atualizar recursos de RedM.
+
+ATENÇÃO RIGOROSA PARA TAMANHO E DOCUMENTAÇÃO (EVITE RESPOSTAS TRUNCADAS):
+- O token limit é precioso. Para NOVO SCRIPT, gere arquivos enxutos, modulares, com comentários mínimos úteis e sem decorações excessivas.
+- Para ALTERAÇÃO INCREMENTAL, retorne APENAS os arquivos que mudaram ou devem fazer parte do resource final, reduzindo linhas repetidas desnecessariamente.
+- O README.md deve ser direto, sem repetir a documentação da base RAG inteira. Seja objetivo com passos de instalação breves.
+- Foque somente no necessário para o recurso funcionar sem erros de sintaxe ou referências inválidas.
 
 CONSIDERE ESTAS DIRETRIZES DE DESIGN:
 - Mantenha padrão estrito do RSG Framework. Nunca misture VORP, QBCore, ESX ou VRP.
@@ -218,7 +310,19 @@ Você deve responder rigorosamente no formato JSON especificado.`;
     const bodyText = response.text;
     if (!bodyText) throw new Error("O modelo gerou uma resposta vazia.");
     
-    const parsed = JSON.parse(bodyText.trim());
+    let parsed;
+    try {
+      parsed = safeParseGeminiJson(bodyText);
+    } catch (parseError: any) {
+      // Catch JSON Parsing/truncation errors elegantly and assign geminiError
+      geminiError = "Gemini respondeu, mas retornou JSON inválido/truncado.";
+      return {
+        content: "Não consegui interpretar a resposta da Gemini porque ela veio incompleta ou em JSON inválido. Reformule o pedido ou tente novamente.",
+        hasScript: false,
+        retrievedContext: relevantDocs
+      };
+    }
+
     geminiError = null;
     
     let activeScriptId = currentScript ? currentScript.id : null;
@@ -275,7 +379,7 @@ Você deve responder rigorosamente no formato JSON especificado.`;
 
     return {
       content: parsed.content,
-      hasScript: parsed.hasScript,
+      hasScript: !!parsed.hasScript,
       retrievedContext: relevantDocs,
       scriptDetail: parsed.hasScript && parsed.scriptDetail ? {
         title: parsed.scriptDetail.title,
@@ -295,6 +399,18 @@ Você deve responder rigorosamente no formato JSON especificado.`;
 
   } catch (error: any) {
     console.error("Erro na chamada da Gemini API / RAG Service:", error);
+
+    // If it was of type JSON_INVALID_OR_TRUNCATED, we caught it in the inner block.
+    // If we missed any parsing error that bubbled up, catch it here.
+    if (error?.message === "JSON_INVALID_OR_TRUNCATED") {
+      geminiError = "Gemini respondeu, mas retornou JSON inválido/truncado.";
+      return {
+        content: "Não consegui interpretar a resposta da Gemini porque ela veio incompleta ou em JSON inválido. Reformule o pedido ou tente novamente.",
+        hasScript: false,
+        retrievedContext: relevantDocs
+      };
+    }
+
     geminiError = error?.message || "Erro desconhecido na chamada Gemini";
     
     // Gerador de script fallback inteligente para dar uma experiência fantástica mesmo na ausência de chaves
