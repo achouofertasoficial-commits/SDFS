@@ -1,0 +1,6 @@
+{
+  "name": "RSG Script Forge AI",
+  "description": "IA especializada em desenvolvimento RedM/RSG para o RSG Framework",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
