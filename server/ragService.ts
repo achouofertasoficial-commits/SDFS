@@ -81,7 +81,11 @@ export function buildPromptWithContext(
   
   prompt += `=== NOVA SOLICITAÇÃO DO USUÁRIO ===\n`;
   prompt += `Pedido Atual: "${userRequest}"\n\n`;
-  prompt += "ATENÇÃO: Se houver arquivos existentes listados acima, você deve analisá-los, preservá-los e aplicar APENAS os aprimoramentos, adições ou correções solicitadas. Retorne sempre TODOS os arquivos finais e funcionais completos. Nunca use comentários sugerindo cortes ou omitindo código útil.";
+  if (currentScript) {
+    prompt += "ATENÇÃO: Você está operando em MODO PATCH INCREMENTAL. Seus novos arquivos ou alterações devem ser inseridos se e somente se forem criados ou modificados. No campo 'content', reescreva por completo APENAS os arquivos que de fato sofreram alteração ou foram criados nesta interação, usando o cabeçalho '### FILE: nome_do_arquivo'. Os arquivos que não sofreram alterações NÃO devem ser retornados no campo 'content', eles serão preservados e fundidos automaticamente no servidor, economizando tokens e evitando truncamento.";
+  } else {
+    prompt += "ATENÇÃO: Você está criando um NOVO SCRIPT. Forneça todos os arquivos necessários do zero no campo 'content' demarcados com o cabeçalho '### FILE: nome_do_arquivo'.";
+  }
 
   return prompt;
 }
@@ -294,13 +298,15 @@ Escreva os seguintes arquivos no formato ### FILE: no campo "content":
 - server.lua
 - README.md (com tabelas SQL adicionais se o script requerer persistência no banco e itens para shared)
 
-MODO 2 (Alteração incremental):
+MODO 2 (Modo PATCH Incremental):
 Se já houver um script existente (com arquivos anteriores) fornecido no contexto de entrada:
+- VOCÊ DEVE OPERAR EM MODO PATCH INCREMENTAL.
 - Analise os arquivos atuais e aplique somente as mudanças solicitadas pelo usuário.
-- Preserve todas as funcionalidades existentes. Nunca remova ou limpe códigos anteriores a menos que explicitamente solicitado.
-- Retorne TODOS os arquivos atualizados em seu estado completo final em blocos ### FILE: no campo "content". Não use placeholders.
-- No campo "change_summary", forneça um resumo técnico detalhado em português das melhorias aplicadas nesta versão.
-- No campo "changed_files", liste os nomes dos arquivos que de fato sofreram alterações.
+- Não gere os arquivos que não foram solicitados ou que permanecem inalterados. Retorne APENAS os arquivos que foram de fato modificados ou criados.
+- Escreva o conteúdo completo atualizado de cada arquivo que sofreu patch em formato markdown usando blocos ### FILE: no campo "content". Não use placeholders parciais, escreva o arquivo que sofreu alteração por inteiro.
+- Os arquivos inalterados NÃO devem ser retornados no "content" para economizar tokens e evitar truncamento do JSON. O servidor irá fundir as suas alterações nos arquivos já existentes automaticamente!
+- No campo "change_summary", forneça um resumo técnico curto em português das melhorias aplicadas nesta versão.
+- No campo "changed_files", liste os nomes dos arquivos que de fato sofreram alterações ou foram adicionados.
 
 Você deve responder rigorosamente no formato JSON especificado.`;
 
@@ -319,7 +325,7 @@ Você deve responder rigorosamente no formato JSON especificado.`;
           properties: {
             content: { 
               type: Type.STRING, 
-              description: "O texto explicativo de resposta estruturada para o usuário em português. TODOS os arquivos de código correspondentes (como fxmanifest.lua, config.lua, client.lua, server.lua e README.md) DEVEM ser obrigatoriamente incluídos por inteiro dentro desse campo 'content' em formato markdown, cada um demarcado com o cabeçalho '### FILE: nome_do_arquivo' antes de seu bloco de código correspondente com três crases. Nunca coloque placeholders." 
+              description: "O texto explicativo de resposta estruturada para o usuário em português. Se for um script novo, inclua todos os arquivos de código correspondentes demarcados com o cabeçalho '### FILE: nome_do_arquivo' antes de seu bloco. Se for uma alteração (MODO PATCH INCREMENTAL), inclua APENAS os arquivos que mudaram ou foram criados demarcados com o cabeçalho '### FILE: nome_do_arquivo'. Nunca coloque os arquivos que permanecem inalterados." 
             },
             hasScript: { 
               type: Type.BOOLEAN, 
@@ -423,11 +429,15 @@ Você deve responder rigorosamente no formato JSON especificado.`;
         const maxNum = existingVersions.length > 0 ? Math.max(...existingVersions.map(v => v.version_number)) : 1;
         versionNum = maxNum + 1;
 
+        // Mergando os arquivos novos e alterados no estado de arquivos anterior
+        const mergedFiles = { ...(currentScript.files || {}), ...(parsed.scriptDetail.files || {}) };
+        parsed.scriptDetail.files = mergedFiles;
+
         const vNext = await createScriptVersion(currentScript.id, chatId, {
           version_number: versionNum,
           change_summary: parsed.scriptDetail.change_summary || "Alteração incremental do script",
           user_request: userRequest,
-          files: parsed.scriptDetail.files || {},
+          files: mergedFiles,
           dependencies: parsed.scriptDetail.dependencies || currentScript.dependencies,
           install_steps: parsed.scriptDetail.install_steps || currentScript.install_steps,
           warnings: parsed.scriptDetail.warnings || currentScript.warnings,

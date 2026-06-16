@@ -14,6 +14,7 @@ import {
   searchDocuments, 
   getChats, 
   createChat, 
+  deleteChat,
   getChatMessages, 
   addChatMessage, 
   getGeneratedScripts, 
@@ -281,6 +282,20 @@ async function startServer() {
       const { title } = req.body;
       const newChat = await createChat(title);
       res.status(201).json(newChat);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/chats/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await deleteChat(id);
+      if (success) {
+        res.json({ success: true, message: "Sessão excluída com sucesso." });
+      } else {
+        res.status(404).json({ error: "Sessão não encontrada para exclusão." });
+      }
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

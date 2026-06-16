@@ -382,6 +382,43 @@ export async function createChat(title?: string): Promise<AIChat> {
   return newChat;
 }
 
+export async function deleteChat(chatId: string): Promise<boolean> {
+  if (supabase) {
+    try {
+      // Delete referencing rows in script_versions
+      await supabase.from('script_versions').delete().eq('chat_id', chatId);
+      // Delete referencing rows in generated_scripts
+      await supabase.from('generated_scripts').delete().eq('chat_id', chatId);
+      // Delete referencing rows in ai_messages
+      await supabase.from('ai_messages').delete().eq('chat_id', chatId);
+      // Finally, delete the chat itself
+      const { error } = await supabase.from('ai_chats').delete().eq('id', chatId);
+      
+      if (!error) {
+        localStore.chats = localStore.chats.filter(c => c.id !== chatId);
+        localStore.messages = localStore.messages.filter(m => m.chat_id !== chatId);
+        localStore.scripts = localStore.scripts.filter(s => s.chat_id !== chatId);
+        localStore.versions = localStore.versions.filter(v => v.chat_id !== chatId);
+        return true;
+      }
+      console.error('Error deleting chat from Supabase:', error);
+    } catch (err) {
+      console.error('Exception deleting chat from Supabase:', err);
+    }
+  }
+
+  // Fallback locally
+  const idx = localStore.chats.findIndex(c => c.id === chatId);
+  if (idx !== -1) {
+    localStore.chats.splice(idx, 1);
+    localStore.messages = localStore.messages.filter(m => m.chat_id !== chatId);
+    localStore.scripts = localStore.scripts.filter(s => s.chat_id !== chatId);
+    localStore.versions = localStore.versions.filter(v => v.chat_id !== chatId);
+    return true;
+  }
+  return false;
+}
+
 // 3. MESSAGES CONTROLLERS
 export async function getChatMessages(chatId: string): Promise<AIMessage[]> {
   if (!chatId || chatId === 'null' || chatId === 'undefined') {

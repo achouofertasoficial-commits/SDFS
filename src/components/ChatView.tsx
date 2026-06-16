@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, Plus, MessageSquare, Terminal, Eye, Copy, Check, FileCode, AlertTriangle, 
-  HelpCircle, ChevronDown, ChevronRight, Server, BookOpen, Layers, RefreshCw, History, GitCommit
+  HelpCircle, ChevronDown, ChevronRight, Server, BookOpen, Layers, RefreshCw, History, GitCommit, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AIChat, AIMessage, GeneratedScript, KnowledgeDocument, ScriptVersion } from '../types';
@@ -184,6 +184,29 @@ export default function ChatView({ currentTab }: ChatViewProps) {
     }
   };
 
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+      const res = await fetch(`/api/chats/${chatId}`, {
+        method: 'DELETE'
+      });
+      if (!res.ok) {
+        throw new Error("Falha ao excluir a sessão.");
+      }
+      
+      setChats(prev => prev.filter(c => c.id !== chatId));
+      
+      if (activeChat?.id === chatId) {
+        setMessages([]);
+        setActiveScript(null);
+        setVersions([]);
+        setActiveChat(null);
+      }
+    } catch (err: any) {
+      console.error("Erro ao excluir sessão:", err);
+      alert(err.message || "Erro ao excluir sessão.");
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !activeChat || isLoading) return;
@@ -319,21 +342,38 @@ export default function ChatView({ currentTab }: ChatViewProps) {
             {chats.map(chat => {
               const isActive = activeChat?.id === chat.id;
               return (
-                <button
+                <div
                   key={chat.id}
-                  onClick={() => {
-                    setActiveChat(chat);
-                    setSuccessFeedback(null);
-                  }}
-                  className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-sans transition-all flex items-center gap-2 border ${
+                  className={`group w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-sans transition-all border ${
                     isActive 
                       ? 'bg-red-950/25 border-red-900/40 text-red-300 font-semibold' 
                       : 'border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900'
                   }`}
                 >
-                  <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-red-400' : 'text-neutral-500'}`} />
-                  <span className="truncate max-w-[170px]">{chat.title}</span>
-                </button>
+                  <button
+                    onClick={() => {
+                      setActiveChat(chat);
+                      setSuccessFeedback(null);
+                    }}
+                    className="flex-1 flex items-center gap-2 text-left truncate focus:outline-none"
+                  >
+                    <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-red-400' : 'text-neutral-500'}`} />
+                    <span className="truncate max-w-[140px]">{chat.title}</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Excluir a sessão "${chat.title}" definitiva e permanentemente?`)) {
+                        handleDeleteChat(chat.id);
+                      }
+                    }}
+                    className="p-1 rounded hover:bg-red-900/40 text-neutral-500 hover:text-red-400 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+                    title="Excluir Sessão"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               );
             })}
           </div>
