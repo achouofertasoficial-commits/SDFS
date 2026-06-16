@@ -20,7 +20,8 @@ import {
   isSupabaseConnected, 
   getSupabaseConfig, 
   updateSupabaseConfig,
-  getSupabaseError
+  getSupabaseError,
+  getSupabaseStatus
 } from "./server/db";
 
 import { generateScriptWithGemini, getGeminiError } from "./server/ragService";
@@ -37,11 +38,13 @@ async function startServer() {
     res.json({ status: "ok", time: new Date() });
   });
 
-  app.get("/api/kb/status", async (req, res) => {
+  // Base endpoint for central health and connection tracking
+  app.get("/api/status", async (req, res) => {
     try {
+      const dbStatus = getSupabaseStatus();
       const docs = await getDocuments();
       const scripts = await getGeneratedScripts();
-      
+
       const stats = {
         totalDocs: docs.length,
         totalNatives: docs.filter(d => d.content_type === 'native' || d.category === 'RedM Natives').length,
@@ -50,16 +53,121 @@ async function startServer() {
       };
 
       res.json({
-        supabaseConnected: isSupabaseConnected(),
-        supabaseUrl: getSupabaseConfig().url ? `${getSupabaseConfig().url.substring(0, 15)}...` : null,
-        supabaseError: getSupabaseError(),
+        supabaseConnected: dbStatus.supabaseConnected,
+        supabaseConfigured: dbStatus.supabaseConfigured,
+        supabaseUsingFallback: dbStatus.supabaseUsingFallback,
+        supabaseError: dbStatus.supabaseError,
         geminiConfigured: !!process.env.GEMINI_API_KEY,
         geminiError: getGeminiError(),
         stats,
-        scriptsCount: scripts.length
+        scriptsCount: scripts.length,
+        config: {
+          supabaseUrl: getSupabaseConfig().url ? `${getSupabaseConfig().url.substring(0, 15)}...` : null,
+          hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          hasAnonKey: !!process.env.SUPABASE_ANON_KEY,
+          geminiConfigured: !!process.env.GEMINI_API_KEY
+        }
       });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/kb/status", async (req, res) => {
+    try {
+      // Point /api/kb/status to the improved shared /api/status model
+      const dbStatus = getSupabaseStatus();
+      const docs = await getDocuments();
+      const scripts = await getGeneratedScripts();
+
+      const stats = {
+        totalDocs: docs.length,
+        totalNatives: docs.filter(d => d.content_type === 'native' || d.category === 'RedM Natives').length,
+        totalExamples: docs.filter(d => d.content_type === 'exemplo' || d.category === 'Scripts Exemplo' || d.category === 'Scripts Base').length,
+        totalSnippets: docs.filter(d => d.content_type === 'snippet' || d.content_type === 'padrão_de_segurança').length,
+      };
+
+      res.json({
+        supabaseConnected: dbStatus.supabaseConnected,
+        supabaseUrl: getSupabaseConfig().url ? `${getSupabaseConfig().url.substring(0, 15)}...` : null,
+        supabaseError: dbStatus.supabaseError,
+        geminiConfigured: !!process.env.GEMINI_API_KEY,
+        geminiError: getGeminiError(),
+        stats,
+        scriptsCount: scripts.length,
+        // Added for backward compatibility checks
+        supabaseConfigured: dbStatus.supabaseConfigured,
+        supabaseUsingFallback: dbStatus.supabaseUsingFallback,
+        config: {
+          supabaseUrl: getSupabaseConfig().url ? `${getSupabaseConfig().url.substring(0, 15)}...` : null,
+          hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          hasAnonKey: !!process.env.SUPABASE_ANON_KEY,
+          geminiConfigured: !!process.env.GEMINI_API_KEY
+        }
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Diagnostic sandbox route (strictly non-production)
+  app.post("/api/debug/supabase-test", async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(403).json({ error: "O diagnóstico está desativado em produção por motivos de conformidade." });
+    }
+
+    try {
+      console.log("Iniciando teste de conexão e persistência no Supabase real...");
+      // 1. Inserir
+      const tempDoc = await addDocument({
+        title: "Diagnóstico RSG Forge AI",
+        category: "debugging",
+        subcategory: "diagnóstico",
+        framework: "RSG",
+        content_type: "documentação",
+        trust_level: "alto",
+        tags: ["debug", "test", "temp-validate"],
+        content: "Este é um arquivo temporário de teste para validar se a conexão e o CRUD estão funcionando no Supabase.",
+        technical_notes: "Ciclo de diagnósticos do RSG forge."
+      });
+
+      console.log("✓ Documento temporário criado:", tempDoc.id);
+
+      // 2. Buscar/Ler para testar leitura
+      const docs = await getDocuments();
+      const found = docs.find(d => d.id === tempDoc.id);
+      if (!found) {
+        throw new Error("Falha na gravação/leitura: O documento inserido não foi encontrado na base.");
+      }
+
+      console.log("✓ Documento temporário lido da base.");
+
+      // 3. Excluir
+      const deleted = await deleteDocument(tempDoc.id);
+      if (!deleted) {
+        throw new Error("Falha na exclusão do documento temporário.");
+      }
+
+      console.log("✓ Documento temporário removido com sucesso.");
+
+      res.json({
+        success: true,
+        message: "Teste de conexão, gravação, leitura e exclusão no Supabase concluído com 100% de sucesso!",
+        details: {
+          tempId: tempDoc.id,
+          steps: ["insert", "read", "delete"]
+        }
+      });
+    } catch (err: any) {
+      console.error("❌ Erro no teste de diagnóstico do Supabase:", err);
+      res.status(500).json({
+        success: false,
+        message: "Falha durante o ciclo CRUD de teste no Supabase.",
+        error: err.message || "Erro desconhecido",
+        supabaseUrl: process.env.SUPABASE_URL ? `${process.env.SUPABASE_URL.substring(0, 15)}...` : "Não configurada",
+        hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        hasAnonKey: !!process.env.SUPABASE_ANON_KEY
+      });
     }
   });
 

@@ -154,7 +154,7 @@ export default function DashboardView({
                 <span className="text-neutral-400">Banco de Dados Supabase</span>
                 {supabaseConnected && !supabaseError ? (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-900/60 animate-pulse">
-                    SUPABASE CONECTADO
+                    BANCO REAL ATIVO
                   </span>
                 ) : supabaseConnected && supabaseError ? (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold text-red-400 bg-red-950/40 border border-red-900/60">
@@ -168,11 +168,11 @@ export default function DashboardView({
               </div>
               <div className="text-[10px] font-mono text-neutral-500 mt-1 leading-relaxed">
                 {supabaseConnected && !supabaseError ? (
-                  <span className="text-emerald-500/90 font-sans">✓ Conectado real à nuvem Supabase. Seus dados estão persistidos e sincronizados com segurança.</span>
+                  <span className="text-emerald-500/90 font-sans">✓ Banco real ativo. Seus dados estão persistidos e sincronizados com segurança na nuvem.</span>
                 ) : supabaseConnected && supabaseError ? (
                   <span className="text-red-400/95 font-sans">⚠ Supabase configurado mas gerou erro: <span className="font-mono text-[9px] underline">{supabaseError}</span>. Ativando fallback local automático.</span>
                 ) : (
-                  <span className="text-amber-500/90 font-sans">⚠ Supabase offline ou não configurado. Utilizando barramento de cache local em memória.</span>
+                  <span className="text-amber-500/90 font-sans">⚠ Fallback local ativo. Utilizando cache e persistência local temporária em memória.</span>
                 )}
               </div>
             </div>
@@ -183,7 +183,7 @@ export default function DashboardView({
                 <span className="text-neutral-400">Gemini Engine (3.5 Flash)</span>
                 {geminiConfigured && !geminiError ? (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-900/60 animate-pulse">
-                    GEMINI OPERACIONAL
+                    GEMINI REAL ATIVA
                   </span>
                 ) : geminiConfigured && geminiError ? (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold text-red-400 bg-red-950/40 border border-red-900/60">
@@ -191,17 +191,17 @@ export default function DashboardView({
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold text-amber-500 bg-amber-950/40 border border-amber-900/60">
-                    MOCK ATIVO (DEMO MODE)
+                    MOCK ATIVO
                   </span>
                 )}
               </div>
               <div className="text-[10px] font-mono text-neutral-500 mt-1 leading-relaxed">
                 {geminiConfigured && !geminiError ? (
-                  <span className="text-emerald-500/90 font-sans">✓ Chave de API Google AI Studio válida e ativa. Geração de código-fonte real RedM calibrada.</span>
+                  <span className="text-emerald-500/90 font-sans">✓ Gemini real ativa. Geração inteligente e refinada de código-fonte de alta fidelidade.</span>
                 ) : geminiConfigured && geminiError ? (
                   <span className="text-red-400/95 font-sans">⚠ Chave configurada mas retornou erro de inferência: <span className="font-mono text-[9px] underline">{geminiError}</span>. Usando simulador local (Mock).</span>
                 ) : (
-                  <span className="text-amber-500/90 font-sans">⚠ Gemini sem credenciais no servidor. Fornecendo modelo de scaffolding estruturado via simulação base local.</span>
+                  <span className="text-amber-500/90 font-sans">⚠ Mock ativo (Demo Mode). Fornecendo scaffolding estruturado local pré-definido pelo Script Forge.</span>
                 )}
               </div>
             </div>

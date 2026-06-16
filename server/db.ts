@@ -4,6 +4,7 @@ import { initialKnowledgeBase, mockGeneratedScriptsList } from '../src/seedData'
 
 // Dynamic server-side configuration variables
 let supabaseUrl = process.env.SUPABASE_URL || '';
+let supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 let supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
 
 let supabase: SupabaseClient | null = null;
@@ -11,6 +12,18 @@ let supabaseError: string | null = null;
 
 export function getSupabaseError(): string | null {
   return supabaseError;
+}
+
+// Standard RFC-4122 v4 UUID generator for secure insertion and local synchronization
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 // Local in-memory store for fallback/graceful execution
@@ -45,10 +58,85 @@ export function updateSupabaseConfig(url: string, key: string) {
   }
 }
 
+// Initialize Supabase from environment variables with safety constraints
+const initSupabaseWithEnv = () => {
+  const url = process.env.SUPABASE_URL || '';
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const anonKey = process.env.SUPABASE_ANON_KEY || '';
+
+  if (!url) {
+    supabaseError = "SUPABASE_URL não está configurada no ambiente.";
+    console.error("❌ Erro: SUPABASE_URL não configurada.");
+    return;
+  }
+
+  supabaseUrl = url;
+  supabaseServiceRoleKey = serviceRole;
+  supabaseAnonKey = anonKey;
+
+  let activeKey = serviceRole;
+  if (!activeKey) {
+    if (anonKey) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("⚠ SUPABASE_SERVICE_ROLE_KEY ausente. Usando SUPABASE_ANON_KEY para desenvolvimento.");
+        activeKey = anonKey;
+      } else {
+        supabaseError = "SUPABASE_SERVICE_ROLE_KEY é obrigatória em produção para evitar bypass.";
+        console.error("❌ Erro de Segurança: SUPABASE_SERVICE_ROLE_KEY é obrigatória em produção.");
+        return;
+      }
+    } else {
+      supabaseError = "Credenciais do Supabase ausentes (Nenhuma SERVICE_ROLE ou ANON_KEY encontrada).";
+      console.error("❌ Erro: Nenhuma credencial do Supabase encontrada no ambiente.");
+      return;
+    }
+  }
+
+  try {
+    supabase = createClient(url, activeKey);
+    supabaseError = null;
+    console.log("✓ RSG Forge AI conectado com sucesso ao Supabase.");
+  } catch (err: any) {
+    supabaseError = err?.message || "Exceção ao criar cliente Supabase";
+    console.error("❌ Exceção ao conectar com Supabase:", err);
+  }
+};
+
+// Execute initial configurations
+initSupabaseWithEnv();
+
+// Detailed status function to distinguish between connection states
+export function getSupabaseStatus() {
+  const isEnvConfigured = !!process.env.SUPABASE_URL && (!!process.env.SUPABASE_SERVICE_ROLE_KEY || !!process.env.SUPABASE_ANON_KEY);
+  const isRuntimeConfigured = !!supabaseUrl && !!supabaseAnonKey;
+  const isConfigured = isEnvConfigured || isRuntimeConfigured;
+
+  const connected = supabase !== null && supabaseError === null;
+
+  let statusStr = "não configurado";
+  if (connected) {
+    statusStr = "conectado real";
+  } else if (isConfigured && supabaseError) {
+    statusStr = "configurado mas com erro";
+  } else {
+    statusStr = "fallback local ativo";
+  }
+
+  return {
+    status: statusStr,
+    supabaseConnected: connected,
+    supabaseConfigured: isConfigured,
+    supabaseUsingFallback: !connected,
+    supabaseError: supabaseError,
+    hasServiceRole: !!process.env.SUPABASE_SERVICE_ROLE_KEY
+  };
+}
+
 // Check initial variables
-if (supabaseUrl && supabaseAnonKey) {
+if (supabaseUrl && supabaseAnonKey && !supabase) {
   updateSupabaseConfig(supabaseUrl, supabaseAnonKey);
 }
+
 
 // Initialize messages fallback if empty
 if (localStore.messages.length === 0) {
@@ -107,7 +195,7 @@ export async function getDocuments(): Promise<KnowledgeDocument[]> {
 export async function addDocument(doc: Omit<KnowledgeDocument, 'id' | 'created_at' | 'updated_at'>): Promise<KnowledgeDocument> {
   const newDoc: KnowledgeDocument = {
     ...doc,
-    id: crypto.randomUUID ? crypto.randomUUID() : 'doc_' + Math.random().toString(36).substring(2, 9),
+    id: generateUUID(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
@@ -251,7 +339,7 @@ export async function getChats(): Promise<AIChat[]> {
 
 export async function createChat(title?: string): Promise<AIChat> {
   const newChat: AIChat = {
-    id: crypto.randomUUID ? crypto.randomUUID() : 'chat_' + Math.random().toString(36).substring(2, 9),
+    id: generateUUID(),
     title: title || 'Novo Script Forge Chat',
     created_at: new Date().toISOString()
   };
@@ -296,7 +384,7 @@ export async function getChatMessages(chatId: string): Promise<AIMessage[]> {
 export async function addChatMessage(msg: Omit<AIMessage, 'id' | 'created_at'>): Promise<AIMessage> {
   const newMsg: AIMessage = {
     ...msg,
-    id: crypto.randomUUID ? crypto.randomUUID() : 'msg_' + Math.random().toString(36).substring(2, 9),
+    id: generateUUID(),
     created_at: new Date().toISOString()
   };
 
@@ -339,7 +427,7 @@ export async function getGeneratedScripts(): Promise<GeneratedScript[]> {
 export async function saveGeneratedScript(script: Omit<GeneratedScript, 'id' | 'created_at'>): Promise<GeneratedScript> {
   const newScript: GeneratedScript = {
     ...script,
-    id: crypto.randomUUID ? crypto.randomUUID() : 'script_' + Math.random().toString(36).substring(2, 9),
+    id: generateUUID(),
     generated_by: script.generated_by || 'gemini',
     created_at: new Date().toISOString()
   };

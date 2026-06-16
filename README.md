@@ -72,6 +72,50 @@ Este script irá configurar de forma automática:
 
 ---
 
+## 🔑 Guia Completo: Conexão Segura ao Supabase Real
+
+Para migrar do fallback local em memória para a persistência real na nuvem Supabase, siga a documentação técnica abaixo:
+
+### 1. Criar Projeto e Coletar Parâmetros no Supabase
+1. Acesse o console oficial do [Supabase](https://supabase.com) e crie uma conta gratuita.
+2. Clique em **New Project** (Novo Projeto), defina o nome (ex: `Script Forge Base`) e crie uma senha segura para o banco.
+3. No painel do projeto em **Project Settings** (ou na tela de Boas-vindas):
+   * **Project URL**: Localizada sob *Project API / URL* (ex: `https://your-proj-id.supabase.co`). Esta URL será usada no `SUPABASE_URL`.
+   * **Anon/Public API Key**: Localizada sob *Project API / anon public* (ex: `eyJhbGciOi...`). Esta chave será usada no `SUPABASE_ANON_KEY`.
+   * **Service Role Key (Secret Key)**: Vá em **Project Settings** > **API** no menu esquerdo e procure por `service_role secret` (ex: `eyJhbGciOi...`). **ATENÇÃO:** Essa chave tem bypass completo de segurança (RLS) e NUNCA de ser exposta ao navegador. Ela será usada apenas no servidor como `SUPABASE_SERVICE_ROLE_KEY`.
+
+### 2. Configurar Secrets no Google AI Studio
+Para garantir o isolamento correto e segurança de produção das suas credenciais:
+1. No menu superior ou lateral de desenvolvimento do **Google AI Studio**, acesse a aba **Settings / Secrets MANAGER**.
+2. Adicione as seguintes variáveis de ambiente (Secrets) com os respectivos valores reais coletados:
+   * `SUPABASE_URL` = (sua URL do projeto Supabase)
+   * `SUPABASE_ANON_KEY` = (sua chave anon/pública)
+   * `SUPABASE_SERVICE_ROLE_KEY` = (sua chave service_role privada)
+   * `GEMINI_API_KEY` = (sua chave de API do Google AI Studio)
+3. Reinicie o servidor de desenvolvimento para que o container carregue as novas chaves.
+
+### 3. Rodar o Script de Tabelas no Supabase SQL Editor
+1. Dentro do painel do seu projeto no Supabase, clique em **SQL Editor** no menu esquerdo.
+2. Clique em **New Query** (Nova Consulta).
+3. Copie todo o conteúdo de `/supabase-blueprint.sql` contido no projeto e cole no painel.
+4. Clique em **Run** (Executar) no canto inferior direito. O compilador criará as tabelas, índices e triggers automáticos em milissegundos.
+
+### 4. Testar Conexão no Painel do Applet
+1. Entre na aba **Configurações** no painel esquerdo do Script Forge.
+2. No painel à direita, você verá a seção de diagnósticos detalhada com os estados de autenticação do backend.
+3. Clique em **Testar Conexão Supabase**. O backend fará o ciclo de sandbox em desenvolvimento:
+   * **Insert**: Grava um documento temporário.
+   * **Read**: Lê e confirma que ele existe.
+   * **Delete**: Exclui para limpar o banco.
+4. O resultado deve mostrar 100% de sucesso! Se houver erros, a causa raiz retornada do PostgreSQL será exibida detalhadamente de forma direta.
+
+### 5. Como Confirmar que o Fallback Local Não Está Ativo
+* No **Dashboard**, no bloco de Status do Ambiente, a flag deve pulsar em verde escrito **BANCO REAL ATIVO**.
+* Em **Configurações**, a seção *Modo de Persistência* deve apresentar a fita **CLOUD PERSISTÊNCIA Real**.
+* No menu lateral de buscas ou interações de chat, os dados serão lidos e mantidos no banco remoto, sobrevivendo a qualquer reinicialização física de aba ou contêiner!
+
+---
+
 ## 🧪 Como Testar o Sistema de Forma Prática
 
 Siga esta trilha de testes para validar todas as rotas e fallbacks do Script Forge:
