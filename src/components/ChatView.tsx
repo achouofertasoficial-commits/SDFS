@@ -35,6 +35,15 @@ export default function ChatView({ currentTab }: ChatViewProps) {
   const [expandedContexts, setExpandedContexts] = useState<Record<string, boolean>>({});
 
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
+
+  // Modal States
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDesc, setNewProjectDesc] = useState('');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [successFeedback, setSuccessFeedback] = useState<string | null>(null);
 
   // Load Chats on Mount
   useEffect(() => {
@@ -115,23 +124,63 @@ export default function ChatView({ currentTab }: ChatViewProps) {
     }
   };
 
-  const handleCreateChat = async () => {
-    const title = prompt('Insira o título da nova sessão do RedM Forge:');
-    if (!title) return;
-    
+  const handleCreateChatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjectName.trim()) {
+      setModalError("O nome do projeto é obrigatório.");
+      return;
+    }
+
+    setIsCreatingProject(true);
+    setModalError(null);
+
     try {
       const res = await fetch('/api/chats', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title })
+        body: JSON.stringify({ title: newProjectName.trim() })
       });
-      if (res.ok) {
-        const newChat = await res.json();
-        setChats(prev => [newChat, ...prev]);
-        setActiveChat(newChat);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Não foi possível criar o projeto.");
       }
-    } catch (err) {
-      console.error('Error creating chat:', err);
+
+      const newChat = await res.json();
+      
+      // Clear current views immediately for snappy visual response
+      setMessages([]);
+      setActiveScript(null);
+      setVersions([]);
+      
+      // Update chats list
+      setChats(prev => [newChat, ...prev]);
+      setActiveChat(newChat);
+
+      // Save the description for the input text to make the flow beautiful
+      if (newProjectDesc.trim()) {
+        setInputText(newProjectDesc.trim());
+      } else {
+        setInputText('');
+      }
+
+      // Show professional feedback
+      setSuccessFeedback("Projeto criado com sucesso. Comece descrevendo o script que deseja criar.");
+
+      // Close modal and reset fields
+      setIsNewProjectModalOpen(false);
+      setNewProjectName('');
+      setNewProjectDesc('');
+
+      // Auto focus the input field after a tiny timeout to let the DOM settle
+      setTimeout(() => {
+        messageInputRef.current?.focus();
+      }, 100);
+
+    } catch (err: any) {
+      setModalError(err.message || "Erro desconhecido ao criar projeto no servidor.");
+    } finally {
+      setIsCreatingProject(false);
     }
   };
 
@@ -252,9 +301,15 @@ export default function ChatView({ currentTab }: ChatViewProps) {
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono font-bold tracking-widest text-neutral-500 uppercase">Sessões Forge</span>
             <button
-              onClick={handleCreateChat}
+              onClick={() => {
+                setModalError(null);
+                setNewProjectName('');
+                setNewProjectDesc('');
+                setIsNewProjectModalOpen(true);
+              }}
               className="p-1.5 bg-red-950/30 hover:bg-red-950/60 border border-red-800/40 rounded text-red-400 hover:text-white transition-colors"
               title="Nova Sessão de RedM"
+              id="btn-trigger-new-session"
             >
               <Plus className="w-4 h-4" />
             </button>
@@ -266,7 +321,10 @@ export default function ChatView({ currentTab }: ChatViewProps) {
               return (
                 <button
                   key={chat.id}
-                  onClick={() => setActiveChat(chat)}
+                  onClick={() => {
+                    setActiveChat(chat);
+                    setSuccessFeedback(null);
+                  }}
                   className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-sans transition-all flex items-center gap-2 border ${
                     isActive 
                       ? 'bg-red-950/25 border-red-900/40 text-red-300 font-semibold' 
@@ -288,8 +346,34 @@ export default function ChatView({ currentTab }: ChatViewProps) {
 
       {/* CORE ACTIVE WORKSPACE */}
       <div id="chat-core-workspace" className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        
-        {/* MESSAGE DISCUSSION HISTORY AREA */}
+        {chats.length === 0 ? (
+          <div id="empty-workspace-center" className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-neutral-950 gap-4">
+            <div className="w-16 h-16 rounded-full bg-red-950/40 border border-red-900/45 flex items-center justify-center animate-pulse">
+              <Terminal className="w-8 h-8 text-red-500" />
+            </div>
+            <div>
+              <h3 className="font-sans font-bold text-base text-neutral-100 uppercase tracking-widest">Nenhum projeto Forge iniciado</h3>
+              <p className="text-xs text-neutral-500 font-mono mt-1.5 max-w-sm mx-auto">
+                Crie seu primeiro projeto para forjar scripts REDM inteligentes consultando a base de conhecimento RSG.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setModalError(null);
+                setNewProjectName('');
+                setNewProjectDesc('');
+                setIsNewProjectModalOpen(true);
+              }}
+              className="px-5 py-2.5 bg-red-700 hover:bg-red-650 hover:scale-[1.02] active:scale-[0.98] text-white rounded-lg text-xs font-mono font-bold tracking-wider uppercase transition shadow-lg shadow-red-900/20 cursor-pointer animate-pulse"
+              id="btn-create-first-project"
+            >
+              Criar primeiro projeto
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* MESSAGE DISCUSSION HISTORY AREA */}
         <div className="flex-1 flex flex-col justify-between h-full bg-neutral-950">
           
           {/* HEADER CHAT INFO */}
@@ -342,6 +426,16 @@ export default function ChatView({ currentTab }: ChatViewProps) {
 
           {/* CHAT MESSAGES PANEL */}
           <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
+            {successFeedback && (
+              <div id="success-feedback-banner" className="bg-emerald-950/40 border border-emerald-900/50 text-emerald-400 p-3 rounded-lg text-xs font-sans text-center flex items-center justify-between gap-2 animate-fade-in shrink-0">
+                <div className="flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-400 animate-bounce" />
+                  <span>{successFeedback}</span>
+                </div>
+                <button type="button" onClick={() => setSuccessFeedback(null)} className="text-neutral-500 hover:text-neutral-300 font-bold px-1 select-none">×</button>
+              </div>
+            )}
+
             {messages.length === 0 && !isLoading && (
               <div className="flex flex-col items-center justify-center h-full text-center max-w-sm mx-auto gap-3 py-12">
                 <Terminal className="w-8 h-8 text-red-700 animate-pulse" />
@@ -445,11 +539,12 @@ export default function ChatView({ currentTab }: ChatViewProps) {
           {/* MESSAGE INPUT CONSOLE */}
           <form onSubmit={handleSendMessage} className="p-4 border-t border-red-950/20 bg-neutral-950 flex gap-2">
             <input
+              ref={messageInputRef}
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={!activeChat || isLoading}
-              placeholder={activeChat ? "Digite o recurso ou alteração que deseja forjar no REDM/RSG..." : "Selecione ou crie um chat abaixo para iniciar"}
+              placeholder={activeChat ? "Descreva o script RSG que deseja criar..." : "Selecione ou crie um chat abaixo para iniciar"}
               className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-xs placeholder-neutral-500 text-neutral-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
             />
             <button
@@ -726,8 +821,103 @@ export default function ChatView({ currentTab }: ChatViewProps) {
             </motion.div>
           )}
         </AnimatePresence>
+          </>
+        )}
 
       </div>
+
+      {/* PROFESSIONAL MODAL FOR CREATING NEW SESSION */}
+      <AnimatePresence>
+        {isNewProjectModalOpen && (
+          <div id="new-project-modal-overlay" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              id="new-project-modal-container"
+              className="bg-neutral-950 border border-red-900/40 rounded-xl p-6 w-full max-w-md shadow-2xl shadow-red-950/20 text-neutral-200"
+            >
+              <div className="flex items-center gap-2.5 mb-4 pb-2 border-b border-red-950/30">
+                <Terminal className="w-5 h-5 text-red-500" />
+                <h3 id="modal-title" className="font-sans font-bold text-xs uppercase tracking-wider text-neutral-100">
+                  Nova Sessão Forge
+                </h3>
+              </div>
+
+              {modalError && (
+                <div id="modal-error-block" className="p-3 bg-red-950/35 border border-red-900/50 rounded-lg text-xs font-sans text-red-400 mb-4 leading-relaxed">
+                  ⚠️ {modalError}
+                </div>
+              )}
+
+              <form onSubmit={handleCreateChatSubmit} className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="input-project-name" className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider">
+                    Nome do Projeto <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="input-project-name"
+                    type="text"
+                    required
+                    disabled={isCreatingProject}
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    placeholder="Ex: rsg-barbershop, Sistema de Cavalos..."
+                    className="bg-neutral-900 border border-neutral-800 rounded-lg px-3.5 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 disabled:opacity-50"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="input-project-desc" className="text-[10px] font-mono font-bold text-neutral-400 uppercase tracking-wider">
+                    Descrição ou Objetivo do Script <span className="text-neutral-500 text-[9px] lowercase italic">(opcional)</span>
+                  </label>
+                  <textarea
+                    id="input-project-desc"
+                    rows={4}
+                    disabled={isCreatingProject}
+                    value={newProjectDesc}
+                    onChange={(e) => setNewProjectDesc(e.target.value)}
+                    placeholder="Ex: Criar um barbeiro customizado com cortes e custos correspondentes..."
+                    className="bg-neutral-900 border border-neutral-800 rounded-lg px-3.5 py-2.5 text-xs text-neutral-200 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600 disabled:opacity-50 resize-none font-sans"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-2 mt-2 border-t border-red-950/20">
+                  <button
+                    id="btn-cancel-modal"
+                    type="button"
+                    disabled={isCreatingProject}
+                    onClick={() => setIsNewProjectModalOpen(false)}
+                    className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 hover:border-neutral-700 text-neutral-400 hover:text-neutral-200 rounded-lg text-xs font-mono transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    id="btn-submit-modal"
+                    type="submit"
+                    disabled={isCreatingProject}
+                    className="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:bg-red-950 text-white border border-red-800/40 rounded-lg text-xs font-mono font-bold uppercase transition flex items-center justify-center gap-1.5 min-w-[130px]"
+                  >
+                    {isCreatingProject ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                        <span>Criando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Criar Projeto</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }
